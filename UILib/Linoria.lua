@@ -1457,11 +1457,7 @@ do
             end
 
             local function ValidateClick(Input)
-                if Library:MouseIsOverOpenedFrame() then
-                    return false
-                end
-
-                if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+                if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then
                     return false
                 end
 
@@ -3443,6 +3439,7 @@ function Library:CreateWindow(...)
         local oIcon = Mouse.Icon;
         local State = InputService.MouseIconEnabled;
 
+---@diagnostic disable-next-line: undefined-global
         local Cursor = Drawing.new('Triangle');
         Cursor.Thickness = 1;
         Cursor.Filled = true;

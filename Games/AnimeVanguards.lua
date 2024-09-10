@@ -21,6 +21,7 @@ local UnitEvent = NetworkingFolder.UnitEvent
 local VoteEvent = NetworkingFolder.EndScreen.VoteEvent
 
 --// Script Consts \\--
+local Functions = {CreateMacro = function() end, DeleteMacro = function() end}
 local ScriptFilePath = "OctoHub"..[[\]].."Anime Vanguards"..[[\]]
 local MacroPath = ScriptFilePath.."Macro"..[[\]]
 local ConfigPath = ScriptFilePath.."Config"..[[\]]
@@ -29,7 +30,7 @@ local ConfigPath = ScriptFilePath.."Config"..[[\]]
 local CurrentRecordStep = 1
 local CurrentRecordData = {}
 
-local ChosenMacro = nil
+local CurrentMacro = nil
 
 --// UI \\--
 local Window = UILib:CreateWindow({
@@ -49,8 +50,15 @@ local MacroRightGroupBox = Tabs.Macro:AddRightGroupbox('Macros')
 
 local MacroPlayToggle = MacroSettingsBox:AddToggle("MacroPlayToggle", {Text = "Play Macro", Default = false, Tooltip = "Play Selected Macro"})
 local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values =  {}, AllowNull = true, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here"})
+local function ChangeMacroName(NewName)
+  CurrentMacro = NewName
+end
+local MacroNameInput = MacroSettingsBox:AddInput("MacroNameInput", {Default = "", Numeric = false, Finished = false, Text = "Macro Name", Tooltip = "Input a name to create a macro", Placeholder = "Name here (32 char max)", MaxLength = 32, Callback = ChangeMacroName})
+local CreateMacroButton = MacroSettingsBox:AddButton("CreateMacroButton", Text = "Create Macro", Func = function() Functions.CreateMacro() end)
+local DeleteMacroConfirmToggle = MacroSettingsBox:AddToggle("DeleteMacroConfirmToggle")
+local MacroDeleteDepBox = MacroSettingsBox:AddDependencyBox()
+local MacroDeleteButton = MacroSettingsBox:AddButton("MacroDeleteButton", Func = function() Functions.DeleteMacro() end)
 local MacroRecordToggle = MacroSettingsBox:AddToggle("MacroRecordToggle", {Text = "Record Macro", Tooltip = "Starts a macro recording. Toggle off to end it."})
-
 
 --// FUNCTIONS \\--
 local function SkipWavesCall()
@@ -97,6 +105,7 @@ local function CreateMacro(MacroName)
     if isfile(MacroFile) then return end
     writefile(MacroPath..MacroName..".json", HttpService:JSONEncode({}))
 end
+Functions.CreateMacro = CreateMacro
 
 local function DeleteMacro(MacroName)
     if not MacroName then return end
@@ -104,6 +113,7 @@ local function DeleteMacro(MacroName)
     if not isfile(MacroFile) then return end
     delfile(MacroPath..MacroName..".json")
 end
+Functions.DeleteMacro = DeleteMacro
 
 local function ChooseMacro(ChosenMacroName)
     if not ChosenMacroName or type(ChosenMacroName) ~= "string" or not ChosenMacroName == "" then return end
@@ -112,6 +122,9 @@ local function ChooseMacro(ChosenMacroName)
     end
 end
 
+local function WriteToMacro(MacroName: string, MacroData)
+  
+end
 --// MACRO PLAY \\--
 local MacroPlaying = false
 local function PlayMacro_Start()

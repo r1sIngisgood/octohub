@@ -220,6 +220,7 @@ local function ChooseMacro(ChosenMacroName)
     UpdateMacroDropdowns()
 end
 Functions.ChooseMacro = ChooseMacro
+CurrentMacroDropdown:OnChanged(ChooseMacro)
 
 UpdateMacroDropdowns()
 

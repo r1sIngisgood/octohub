@@ -76,10 +76,15 @@ local Tabs = {
     UISettings = Window:AddTab('UI Settings')
 }
 
+local UISettingsBox = Tabs.UISettings:AddLeftGroupbox("UI Settings")
+UISettingsBox:AddButton("Unload", function() UILib:Unload() end)
+
 local MacroSettingsBox = Tabs.Macro:AddLeftGroupbox('Macro Settings')
 local MacroRightGroupBox = Tabs.Macro:AddRightGroupbox('Macros')
 
 local MacroPlayToggle = MacroSettingsBox:AddToggle("MacroPlayToggle", {Text = "Play Macro", Default = false, Tooltip = "Play Selected Macro"})
+local MacroPlayDepBox = MacroSettingsBox:AddDependencyBox()
+local MacroStatusLabel = MacroSettingsBox:AddLabel("Macro Status Here!", true)
 local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here", Callback = Functions.ChooseMacro})
 local function ChangeMacroName(NewName)
     CurrentMacroName = NewName
@@ -93,6 +98,9 @@ local MacroRecordToggle = MacroSettingsBox:AddToggle("MacroRecordToggle", {Text 
 
 MacroDeleteDepBox:SetupDependencies({
     {DeleteMacroConfirmToggle, true}
+})
+MacroPlayDepBox:SetupDependencies({
+    {MacroPlayToggle, true}
 })
 
 local MacroDropdowns = {CurrentMacroDropdown}
@@ -129,6 +137,7 @@ end
 local function GetPlacedUnitDataFromGUID(UnitGUID: string)
     local AllPlacedUnits = UnitPlacementsHandler:GetAllPlacedUnits()
     local PlacedUnitData = AllPlacedUnits[UnitGUID]
+    if not PlacedUnitData then warn(PlacedUnitData, AllPlacedUnits, AllPlacedUnits[UnitGUID], UnitGUID) end
 
     return PlacedUnitData
 end
@@ -155,13 +164,15 @@ end
 
 local function GetUnitGUIDFromPos(Pos: Vector3)
     if not Pos then return end
+    local UnitGUID: string
     for i, v in pairs(UnitsFolder:GetChildren()) do
         local vHRP = v:FindFirstChild("HumanoidRootPart")
         if not vHRP then return end
         if (vHRP.Position - Pos).Magnitude <= 1 then
-            return v.Name
+            UnitGUID = v.Name
         end
     end
+    return UnitGUID
 end
 
 local function PlaceUnit(UnitIDOrName: number|string, Pos: Vector3, Rotation: number)
@@ -255,21 +266,25 @@ local function PlayMacro()
     MacroPlaying = not MacroPlaying
     if MacroPlaying then
         for stepCount, stepData in pairs(CurrentMacroData) do
-            print(stepCount, stepData)
+            task.wait(0.1)
             local CurrentYen = PlayerYenHandler:GetYen()
 
             local stepName = stepData[1]
             if stepName == "Place" then
+                
                 local UnitName = stepData[2]
+                MacroStatusLabel:SetText("Placing "..UnitName)
                 local UnitPos = string_to_vector3(stepData[4])
                 local UnitID = stepData[3]
                 local UnitData = GetUnitDataFromID(stepData[3])
                 local UnitRotation = stepData[5]
                 if UnitData["Price"] > CurrentYen then
+                    MacroStatusLabel:SetText("Placing "..UnitName..", waiting for "..tostring(UnitData["Price"]))
                     repeat task.wait() until PlayerYenHandler:GetYen() >= UnitData["Price"]
                 end
                 PlaceUnit(UnitName, UnitPos, UnitRotation)
             elseif stepName == "Sell" then
+                MacroStatusLabel:SetText("Selling a unit")
                 local UnitPos = string_to_vector3(stepData[2])
                 local UnitGUID = GetUnitGUIDFromPos(UnitPos)
 
@@ -278,11 +293,19 @@ local function PlayMacro()
                 local UnitPos = string_to_vector3(stepData[2])
                 local UnitGUID = GetUnitGUIDFromPos(UnitPos)
 
-                local PlacedUnitData = GetPlacedUnitDataFromGUID(UnitGUID)
-                local UpgradeLevel = PlacedUnitData["UpgradeLevel"]
-                local UpgradePrice = PlacedUnitData["UnitObject"]["Data"]["Upgrades"][UpgradeLevel+1]
+                local PlacedUnitData
+                repeat
+                    task.wait(0.1)
+                    warn(UnitGUID)
+                    PlacedUnitData = GetPlacedUnitDataFromGUID(UnitGUID)
+                until PlacedUnitData ~= nil
 
+                local UpgradeLevel = PlacedUnitData["UpgradeLevel"]
+                local UpgradePrice = PlacedUnitData["UnitObject"]["Data"]["Upgrades"][UpgradeLevel+1]["Price"]
+                local UnitName = PlacedUnitData["UnitObject"]["Name"]
+                MacroStatusLabel:SetText("Upgrading "..UnitName)
                 if UpgradePrice > CurrentYen then
+                    MacroStatusLabel:SetText("Upgrading "..UnitName..", waiting for "..tostring(UpgradePrice))
                     repeat task.wait() until PlayerYenHandler:GetYen() >= UpgradePrice
                 end
                 UpgradeUnit(UnitGUID)

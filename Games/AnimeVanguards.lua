@@ -78,6 +78,8 @@ local Tabs = {
     UISettings = Window:AddTab('UI Settings')
 }
 
+local AutoRetryToggle = Tabs.Main:AddToggle("AutoRetryToggle", {Text = "Auto Retry", Default = false, Tooltip = "Auto press the retry button"})
+
 local UISettingsBox = Tabs.UISettings:AddLeftGroupbox("UI Settings")
 UISettingsBox:AddButton("Unload", function() UILib:Unload() end)
 

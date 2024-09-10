@@ -44,9 +44,15 @@ local Tabs = {
     UISettings = Window:AddTab('UI Settings')
 }
 
-local MacroLeftGroupBox = Tabs.Macro:AddLeftGroupbox('Macro Settings')
+local MacroSettingsBox = Tabs.Macro:AddLeftGroupbox('Macro Settings')
 local MacroRightGroupBox = Tabs.Macro:AddRightGroupbox('Macros')
 
+local MacroPlayToggle = MacroSettingsBox:AddToggle("MacroPlayToggle", {Text = "Play Macro", Default = false, Tooltip = "Play Selected Macro"})
+local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values =  {}, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here"})
+local MacroRecordToggle = MacroSettingsBox:AddToggle("MacroRecordToggle", {Text = "Record Macro", Tooltip = "Starts a macro recording. Toggle off to end it."})
+
+
+--// FUNCTIONS \\--
 local function SkipWavesCall()
     StartWavesEvent:FireServer("Skip")
 end

@@ -1,0 +1,1 @@
+loadstring(game:HttpGet("https://raw.githubusercontent.com/r1sIngisgood/octohub/main/Games/AnimeVanguards.lua"))()

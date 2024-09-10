@@ -84,7 +84,7 @@ local MacroRightGroupBox = Tabs.Macro:AddRightGroupbox('Macros')
 
 local MacroPlayToggle = MacroSettingsBox:AddToggle("MacroPlayToggle", {Text = "Play Macro", Default = false, Tooltip = "Play Selected Macro"})
 local MacroPlayDepBox = MacroSettingsBox:AddDependencyBox()
-local MacroStatusLabel = MacroSettingsBox:AddLabel("Macro Status Here!", true)
+local MacroStatusLabel = MacroPlayDepBox:AddLabel("Macro Status Here!", true)
 local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here", Callback = Functions.ChooseMacro})
 local function ChangeMacroName(NewName)
     CurrentMacroName = NewName

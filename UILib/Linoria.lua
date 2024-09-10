@@ -1457,6 +1457,10 @@ do
             end
 
             local function ValidateClick(Input)
+                if Library:MouseIsOverOpenedFrame() then
+                    return false
+                end
+
                 if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then
                     return false
                 end
@@ -1465,7 +1469,7 @@ do
             end
 
             Button.Outer.InputBegan:Connect(function(Input)
-                if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then return end
+                if not ValidateClick(Input) then return end
                 if Button.Locked then return end
 
                 if Button.DoubleClick then

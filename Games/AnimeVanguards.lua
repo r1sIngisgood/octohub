@@ -10,6 +10,8 @@ local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/r
 --// IG SERVICES \\--
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
+local VirtualUser = game:GetService("VirtualUser")
+local Players = game:GetService("Players")
 
 --// GAME MODULES \\--
 local ModulesFolder = ReplicatedStorage.Modules
@@ -52,6 +54,12 @@ local function cfgbeautify(str) return string.gsub(string.gsub(str,MacroPath,"")
 local function isdotjson(file) return string.sub(file, -5) == ".json" end
 local function string_to_vector3(str) return Vector3.new(table.unpack(str:gsub(" ",""):split(","))) end
 
+Players.LocalPlayer.Idled:Connect(function()
+    VirtualUser:Button2Down(Vector2.new(), workspace.CurrentCamera.CFrame)
+    task.wait(1)
+    VirtualUser:Button2Up(Vector2.new(), workspace.CurrentCamera.CFrame)
+end)
+
 --// UI \\--
 local Window = UILib:CreateWindow({
     Title = 'Octo Hub!!!',
@@ -69,15 +77,15 @@ local MacroSettingsBox = Tabs.Macro:AddLeftGroupbox('Macro Settings')
 local MacroRightGroupBox = Tabs.Macro:AddRightGroupbox('Macros')
 
 local MacroPlayToggle = MacroSettingsBox:AddToggle("MacroPlayToggle", {Text = "Play Macro", Default = false, Tooltip = "Play Selected Macro"})
-local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values = Macros, AllowNull = true, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here", Callback = Functions.ChooseMacro})
+local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here", Callback = Functions.ChooseMacro})
 local function ChangeMacroName(NewName)
     CurrentMacroName = NewName
 end
 local MacroNameInput = MacroSettingsBox:AddInput("MacroNameInput", {Default = "", Numeric = false, Finished = false, Text = "Macro Name", Tooltip = "Input a name to create a macro", Placeholder = "Name here (32 char max)", MaxLength = 32, Callback = ChangeMacroName})
-local CreateMacroButton = MacroSettingsBox:AddButton({Text = "Create Macro", Func = Functions.CreateMacro})
+local CreateMacroButton = MacroSettingsBox:AddButton({Text = "Create Macro", Func = EmptyFunc})
 local DeleteMacroConfirmToggle = MacroSettingsBox:AddToggle("DeleteMacroConfirmToggle", {Text = "I want to delete the macro", Tooltip = "Turn this on to see the macro delete button"})
 local MacroDeleteDepBox = MacroSettingsBox:AddDependencyBox()
-local MacroDeleteButton = MacroDeleteDepBox:AddButton({Text = "Delete Macro", Func = Functions.DeleteMacro})
+local MacroDeleteButton = MacroDeleteDepBox:AddButton({Text = "Delete Macro", Func = EmptyFunc})
 local MacroRecordToggle = MacroSettingsBox:AddToggle("MacroRecordToggle", {Text = "Record Macro", Tooltip = "Starts a macro recording. Toggle off to end it."})
 
 MacroDeleteDepBox:SetupDependencies({
@@ -88,13 +96,16 @@ local MacroDropdowns = {CurrentMacroDropdown}
 local function UpdateMacroDropdowns()
     Macros = {}
     local MacroFileList = listfiles("OctoHub"..[[/]].."Anime Vanguards"..[[/]].."Macro")
+    
     for _, file in ipairs(MacroFileList) do
         if isdotjson(file) then
             local MacroName = cfgbeautify(file)
             table.insert(Macros, MacroName)
         end
     end
+    writefile("r1singdebug1.json", tostring(HttpService:JSONEncode(Macros)))
     for _, Dropdown in ipairs(MacroDropdowns) do
+        Dropdown.Values = Macros
         Dropdown:SetValues()
     end
 end
@@ -181,10 +192,13 @@ local function CreateMacro(MacroName)
     if not MacroName then return end
     local MacroFile = MacroPath..MacroName..".json"
     writefile(MacroPath..MacroName..".json", HttpService:JSONEncode({}))
-    Notify("Replaced "..MacroName.." with an empty macro")
+    Notify("ABC")
     UpdateMacroDropdowns()
 end
 Functions.CreateMacro = CreateMacro
+CreateMacroButton.Func = function()
+    CreateMacro(MacroNameInput.Value)
+end
 
 local function DeleteMacro(MacroName)
     if not MacroName then return end
@@ -194,6 +208,9 @@ local function DeleteMacro(MacroName)
     UpdateMacroDropdowns()
 end
 Functions.DeleteMacro = DeleteMacro
+MacroDeleteButton.Func = function()
+    DeleteMacro(CurrentMacroName)
+end
 
 local function ChooseMacro(ChosenMacroName)
     if not ChosenMacroName or type(ChosenMacroName) ~= "string" or not ChosenMacroName == "" then return end

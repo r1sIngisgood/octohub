@@ -1,6 +1,6 @@
 local repo = "https://raw.githubusercontent.com/r1sIngisgood/octohub/main/"
-local UILib = require(game:HttpGet(repo.."UILib/Linoria.lua"))
-local SaveManager = require(game:HttpGet(repo.."UILib/SaveManager.lua"))
+local UILib = loadstring(game:HttpGet(repo.."UILib/Linoria.lua"))
+local SaveManager = loadstring(game:HttpGet(repo.."UILib/SaveManager.lua"))
 
 --// IG SERVICES \\--
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

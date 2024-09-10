@@ -19,6 +19,9 @@ local ModulesFolder = ReplicatedStorage.Modules
 local EntityIDHandler = require(ModulesFolder.Data.Entities.EntityIDHandler)
 local UnitsModule = require(game:GetService("ReplicatedStorage").Modules.Data.Entities.Units)
 local ClientUnitHandler = require(game:GetService("StarterPlayer").Modules.Gameplay.ClientUnitHandler)
+local PlayerYenHandler = require(game:GetService("StarterPlayer").Modules.Gameplay.PlayerYenHandler)
+local GameHandler = require(game:GetService("ReplicatedStorage").Modules.Gameplay.GameHandler)
+local UnitPlacementsHandler = require(game:GetService("StarterPlayer").Modules.Gameplay.UnitManager.UnitPlacementsHandler)
 
 --// IG OBJECTS \\--
 local NetworkingFolder = ReplicatedStorage:WaitForChild("Networking")
@@ -103,7 +106,6 @@ local function UpdateMacroDropdowns()
             table.insert(Macros, MacroName)
         end
     end
-    writefile("r1singdebug1.json", tostring(HttpService:JSONEncode(Macros)))
     for _, Dropdown in ipairs(MacroDropdowns) do
         Dropdown.Values = Macros
         Dropdown:SetValues()
@@ -119,21 +121,34 @@ local function RetryCall()
     VoteEvent:FireServer("Retry")
 end
 
-local function getUnitIDByName(UnitName: string)
+local function GetUnitIDFromName(UnitName: string)
     if not UnitName then return end
     return EntityIDHandler.GetIDFromName(nil, "Unit", UnitName)
 end
 
-local function getUnitDataByID(UnitID: number)
+local function GetPlacedUnitDataFromGUID(UnitGUID: string)
+    local AllPlacedUnits = UnitPlacementsHandler:GetAllPlacedUnits()
+    local PlacedUnitData = AllPlacedUnits[UnitGUID]
+
+    return PlacedUnitData
+end
+
+local function GetUnitDataFromID(UnitID: number)
     if not UnitID then return end
     return UnitsModule.GetUnitDataFromID(nil, UnitID, true)
+end
+
+local function GetUnitNameFromID(UnitID: number)
+    if not UnitID then return end
+    local UnitData = GetUnitDataFromID(UnitID)
+    return UnitData["Name"]
 end
 
 local function Notify(message)
     UILib:Notify(message)
 end
 
-local function getUnitModelByGUID(UnitGUID: string)
+local function GetUnitModelFromGUID(UnitGUID: string)
     if not UnitGUID then return end
     return ClientUnitHandler.GetUnitModelFromGUID(nil, UnitGUID)
 end
@@ -149,16 +164,23 @@ local function GetUnitGUIDFromPos(Pos: Vector3)
     end
 end
 
-local function PlaceUnit(UnitName: string, Pos: Vector3, Rotation: number)
-    if not UnitName or not Pos then return end
+local function PlaceUnit(UnitIDOrName: number|string, Pos: Vector3, Rotation: number)
+    if not UnitIDOrName or not Pos then return end
     if not Rotation then Rotation = 90 end
-    local UnitID = getUnitIDByName(UnitName)
+    local UnitName, UnitID
+    if typeof(UnitIDOrName) == "string" then
+        UnitName = UnitIDOrName
+        UnitID = GetUnitIDFromName(UnitName)
+    elseif typeof(UnitIDOrName) == "number" then
+        UnitID = UnitIDOrName
+        UnitName = GetUnitNameFromID(UnitID)
+    end
     local Payload = {UnitName, UnitID, Pos, Rotation}
 
     UnitEvent:FireServer("Render", Payload)
 end
 
-local function RemoveUnit(UnitGUID: string)
+local function SellUnit(UnitGUID: string)
     if not UnitGUID then return end
     UnitEvent:FireServer("Sell", UnitGUID)
 end
@@ -189,10 +211,10 @@ local function WriteMacroFile(MacroName: string, MacroData)
 end
 
 local function CreateMacro(MacroName)
-    if not MacroName then return end
+    if not MacroName or MacroName == "" or string.find(MacroName, '"') then return end
     local MacroFile = MacroPath..MacroName..".json"
     writefile(MacroPath..MacroName..".json", HttpService:JSONEncode({}))
-    Notify("ABC")
+    Notify("Macro created")
     UpdateMacroDropdowns()
 end
 Functions.CreateMacro = CreateMacro
@@ -205,6 +227,7 @@ local function DeleteMacro(MacroName)
     local MacroFile = MacroPath..MacroName..".json"
     if not isfile(MacroFile) then return end
     delfile(MacroPath..MacroName..".json")
+    Notify("Macro deleted")
     UpdateMacroDropdowns()
 end
 Functions.DeleteMacro = DeleteMacro
@@ -217,6 +240,7 @@ local function ChooseMacro(ChosenMacroName)
     if not isfile(MacroPath..ChosenMacroName..".json") then CurrentMacroDropdown:SetValues() return end
     CurrentMacroName = ChosenMacroName
     CurrentMacroData = ReadMacroFile(CurrentMacroName)
+    Notify("Macro "..CurrentMacroName.." was loaded.")
     UpdateMacroDropdowns()
 end
 Functions.ChooseMacro = ChooseMacro
@@ -225,13 +249,49 @@ CurrentMacroDropdown:OnChanged(ChooseMacro)
 UpdateMacroDropdowns()
 
 --// MACRO PLAY \\--
+
 local MacroPlaying = false
 local function PlayMacro()
     MacroPlaying = not MacroPlaying
     if MacroPlaying then
-        
+        for stepCount, stepData in pairs(CurrentMacroData) do
+            print(stepCount, stepData)
+            local CurrentYen = PlayerYenHandler:GetYen()
+
+            local stepName = stepData[1]
+            if stepName == "Place" then
+                local UnitName = stepData[2]
+                local UnitPos = string_to_vector3(stepData[4])
+                local UnitID = stepData[3]
+                local UnitData = GetUnitDataFromID(stepData[3])
+                local UnitRotation = stepData[5]
+                if UnitData["Price"] > CurrentYen then
+                    repeat task.wait() until PlayerYenHandler:GetYen() >= UnitData["Price"]
+                end
+                PlaceUnit(UnitName, UnitPos, UnitRotation)
+            elseif stepName == "Sell" then
+                local UnitPos = string_to_vector3(stepData[2])
+                local UnitGUID = GetUnitGUIDFromPos(UnitPos)
+
+                SellUnit(UnitGUID)
+            elseif stepName == "Upgrade" then
+                local UnitPos = string_to_vector3(stepData[2])
+                local UnitGUID = GetUnitGUIDFromPos(UnitPos)
+
+                local PlacedUnitData = GetPlacedUnitDataFromGUID(UnitGUID)
+                local UpgradeLevel = PlacedUnitData["UpgradeLevel"]
+                local UpgradePrice = PlacedUnitData["UnitObject"]["Data"]["Upgrades"][UpgradeLevel+1]
+
+                if UpgradePrice > CurrentYen then
+                    repeat task.wait() until PlayerYenHandler:GetYen() >= UpgradePrice
+                end
+                UpgradeUnit(UnitGUID)
+            end
+        end
     end
 end
+
+MacroPlayToggle.Callback = PlayMacro
 
 --// MACRO RECORD \\--
 local gameMeta = getrawmetatable(game)
@@ -260,34 +320,30 @@ local on_namecall = function(obj, ...)
     local args = {...}
     local method = tostring(getnamecallmethod())
     local isRemoteMethod = method == "FireServer" or method == "InvokeServer"
-
     if RecordingMacro then
         if method:match("Server") and isRemoteMethod then
             if obj == UnitEvent then
                 if args[1] == "Render" then
                     local UnitTable = args[2]
-                    -- UnitName = UnitTable[1]
-                    -- UnitID = UnitTable[2]
-                    -- UnitPos = UnitTable[3]
-                    -- UnitRotation = UnitTable[4]
-                    local UnitData = getUnitDataByID(UnitTable[2])
-                    local Cost = UnitData["Price"]
+                    local UnitName = UnitTable[1]
+                    local UnitID = UnitTable[2]
+                    local UnitPos = UnitTable[3]
+                    local UnitRotation = UnitTable[4]
 
-                    CurrentRecordData[CurrentRecordStep] = {"Place", UnitTable}
+                    CurrentRecordData[CurrentRecordStep] = {"Place", UnitName, UnitID, tostring(UnitPos), UnitRotation}
                 elseif args[1] == "Sell" then
                     local UnitGUID = args[2]
-                    local UnitModel = getUnitModelByGUID(UnitGUID)
+                    local UnitModel = GetUnitModelFromGUID(UnitGUID)
                     local UnitPos = UnitModel.HumanoidRootPart.Position
-                    print(require(game:GetService("ReplicatedStorage").Modules.Data.Entities.EntityIDHandler):GetNameFromID(UnitGUID))
-                    CurrentRecordData[CurrentRecordStep] = {"Sell", UnitPos}
+
+                    CurrentRecordData[CurrentRecordStep] = {"Sell", tostring(UnitPos)}
+                    warn(tostring(UnitPos))
                 elseif args[1] == "Upgrade" then
                     local UnitGUID = args[2]
-                    local UnitModel = getUnitModelByGUID(UnitGUID)
+                    local UnitModel = GetUnitModelFromGUID(UnitGUID)
                     local UnitPos = UnitModel.HumanoidRootPart.Position
-                    local UnitData = getUnitDataByID(UnitTable[2])
-                    local Cost = UnitData["Upgrades"]
 
-                    CurrentRecordData[CurrentRecordStep] = {"Upgrade", UnitPos}
+                    CurrentRecordData[CurrentRecordStep] = {"Upgrade", tostring(UnitPos)}
                 end
                 CurrentRecordStep += 1
             end

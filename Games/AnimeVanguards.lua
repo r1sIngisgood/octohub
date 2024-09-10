@@ -1,3 +1,5 @@
+getgenv().Octohub = {}
+
 if not isfolder("OctoHub") then makefolder("OctoHub") end
 if not isfolder("OctoHub"..[[/]].."Anime Vanguards") then makefolder("OctoHub"..[[/]].."Anime Vanguards") end
 if not isfolder("OctoHub"..[[/]].."Anime Vanguards"..[[/]].."Macro") then makefolder("OctoHub"..[[/]].."Anime Vanguards"..[[/]].."Macro") end
@@ -5,7 +7,6 @@ if not isfolder("OctoHub"..[[/]].."Anime Vanguards"..[[/]].."Config") then makef
 
 local repo = "https://raw.githubusercontent.com/r1sIngisgood/octohub/main/"
 local UILib = loadstring(game:HttpGet("https://raw.githubusercontent.com/r1sIngisgood/octohub/main/UILib/Linoria.lua"))()
-local ConfigManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/r1sIngisgood/octohub/main/ConfigManager.lua"))()
 
 --// IG SERVICES \\--
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -57,6 +58,12 @@ local PlayingMacro = false
 local function cfgbeautify(str) return string.gsub(string.gsub(str,MacroPath,""),".json","") end
 local function isdotjson(file) return string.sub(file, -5) == ".json" end
 local function string_to_vector3(str) return Vector3.new(table.unpack(str:gsub(" ",""):split(","))) end
+local function checkJSON(str)
+    local result = pcall(function()
+        HttpService:JSONDecode(str)
+    end)
+    return result
+end
 
 Players.LocalPlayer.Idled:Connect(function()
     VirtualUser:Button2Down(Vector2.new(), workspace.CurrentCamera.CFrame)
@@ -75,30 +82,40 @@ local Window = UILib:CreateWindow({
 local Tabs = {
     Main = Window:AddTab('Main'),
     Macro = Window:AddTab('Macro'),
-    UISettings = Window:AddTab('UI Settings')
+    UISettings = Window:AddTab('UI Settings'),
+    Config = Window:AddTab('Config'),
 }
 
-local AutoRetryToggle = Tabs.Main:AddToggle("AutoRetryToggle", {Text = "Auto Retry", Default = false, Tooltip = "Auto press the retry button"})
+local FarmSettingsBox = Tabs.Main:AddLeftGroupbox("Farm Settings")
+local AutoRetryToggle = FarmSettingsBox:AddToggle("AutoRetryToggle", {Text = "Auto Retry", Default = false, Tooltip = "Auto press the retry button"})
 
 local UISettingsBox = Tabs.UISettings:AddLeftGroupbox("UI Settings")
-UISettingsBox:AddButton("Unload", function() UILib:Unload() end)
+local UnloadButton = UISettingsBox:AddButton("Unload", EmptyFunc)
 
 local MacroSettingsBox = Tabs.Macro:AddLeftGroupbox('Macro Settings')
 local MacroRightGroupBox = Tabs.Macro:AddRightGroupbox('Macros')
 
+local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here", Callback = Functions.ChooseMacro})
 local MacroPlayToggle = MacroSettingsBox:AddToggle("MacroPlayToggle", {Text = "Play Macro", Default = false, Tooltip = "Play Selected Macro"})
 local MacroPlayDepBox = MacroSettingsBox:AddDependencyBox()
-local MacroStatusLabel = MacroSettingsBox:AddLabel("Macro Status Here!", true)
-local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here", Callback = Functions.ChooseMacro})
+local MacroStatusLabel = MacroPlayDepBox:AddLabel("Macro Status Here!", false)
+local MacroDiv1 = MacroSettingsBox:AddDivider()
 local function ChangeMacroName(NewName)
     CurrentMacroName = NewName
 end
-local MacroNameInput = MacroSettingsBox:AddInput("MacroNameInput", {Default = "", Numeric = false, Finished = false, Text = "Macro Name", Tooltip = "Input a name to create a macro", Placeholder = "Name here (32 char max)", MaxLength = 32, Callback = ChangeMacroName})
+local MacroNameInput = MacroSettingsBox:AddInput("MacroNameInput", {Default = "", Numeric = false, Finished = false, Text = "Create Macro", Tooltip = "Input a name to create a macro", Placeholder = "Name here (32 char max)", MaxLength = 32, Callback = ChangeMacroName})
 local CreateMacroButton = MacroSettingsBox:AddButton({Text = "Create Macro", Func = EmptyFunc})
 local DeleteMacroConfirmToggle = MacroSettingsBox:AddToggle("DeleteMacroConfirmToggle", {Text = "I want to delete the macro", Tooltip = "Turn this on to see the macro delete button"})
 local MacroDeleteDepBox = MacroSettingsBox:AddDependencyBox()
 local MacroDeleteButton = MacroDeleteDepBox:AddButton({Text = "Delete Macro", Func = EmptyFunc})
+local MacroDiv2 = MacroSettingsBox:AddDivider()
 local MacroRecordToggle = MacroSettingsBox:AddToggle("MacroRecordToggle", {Text = "Record Macro", Tooltip = "Starts a macro recording. Toggle off to end it."})
+local RecordMacroDepBox = MacroSettingsBox:AddDependencyBox()
+local MacroRecordStatusLabel = RecordMacroDepBox:AddLabel("Recording status here!")
+
+local ConfigBox = Tabs.Config:AddLeftGroupbox("ConfigBox")
+local ConfigLoadButton = ConfigBox:AddButton({Text = "Load Config", Func = EmptyFunc})
+local ConfigSaveButton = ConfigBox:AddButton({Text = "Save Config", Func = EmptyFunc})
 
 MacroDeleteDepBox:SetupDependencies({
     {DeleteMacroConfirmToggle, true}
@@ -106,38 +123,48 @@ MacroDeleteDepBox:SetupDependencies({
 MacroPlayDepBox:SetupDependencies({
     {MacroPlayToggle, true}
 })
+RecordMacroDepBox:SetupDependencies({
+    {MacroRecordToggle, true}
+})
 
 local MacroDropdowns = {["CurrentMacroDropdown"] = CurrentMacroDropdown}
-local function UpdateMacroDropdowns()
-    Macros = {}
-    local MacroFileList = listfiles("OctoHub"..[[/]].."Anime Vanguards"..[[/]].."Macro")
-    
-    for _, file in ipairs(MacroFileList) do
-        if isdotjson(file) then
-            local MacroName = cfgbeautify(file)
-            table.insert(Macros, MacroName)
-        end
-    end
-    for _, Dropdown in ipairs(MacroDropdowns) do
-        Dropdown.Values = Macros
-        Dropdown:SetValues()
-    end
-end
 
 --// CONFIG \\--
-getgenv().Octohub = {}
-local genvocto = getgenv().Octohub
-genvocto.Config = ConfigManager.LoadConfig(Players.LocalPlayer.Name, "AnimeVanguards") or {Toggles = {}, MacroDropdowns = {}}
+local Filename = "AnimeVanguards_"..Players.LocalPlayer.Name..".json"
+local DefaultCFG = {Toggles = {}, MacroDropdowns = {}}
+local ConfigBlacklistNames = {"DeleteMacroConfirmToggle", "MacroRecordToggle"}
+
+local function LoadConfig()
+    if not isfile(ConfigPath..Filename) then
+        writefile(ConfigPath..Filename, HttpService:JSONEncode(DefaultCFG))
+        return
+    end
+    local ConfigData = readfile(ConfigPath..Filename)
+    if not checkJSON(ConfigData) then UILib:Notify("Unable to load config, invalid json format") return DefaultCFG end
+    local DecodedConfig = HttpService:JSONDecode(ConfigData)
+    return DecodedConfig
+end
+ConfigLoadButton.Func = LoadConfig
+
+getgenv().Octohub.Config = LoadConfig() or DefaultCFG
 
 local function SaveConfig()
-    ConfigManager.SaveConfig(Players.LocalPlayer.Name, "AnimeVanguards", genvocto.Config)
-end
+    for ToggleName, ToggleProps in pairs(getgenv().Toggles) do
+        if table.find(ConfigBlacklistNames, ToggleName) then continue end
+        getgenv().Octohub.Config.Toggles[ToggleName] = ToggleProps.Value
+    end
+    for DropdownName, DropdownProps in pairs(MacroDropdowns) do
+        if table.find(ConfigBlacklistNames, DropdownName) then continue end
+        getgenv().Octohub.Config.MacroDropdowns[DropdownName] = DropdownProps.Value
+    end
 
-for ToggleName, ToggleProps in pairs(getgenv().Toggles) do
-    genvocto.Config.Toggles[ToggleName] = ToggleProps.Value
+    local ConfigData = HttpService:JSONEncode(getgenv().Octohub.Config)
+    writefile(ConfigPath..Filename, ConfigData)
 end
-for DropdownName, DropdownProps in pairs(MacroDropdowns) do
-    genvocto.Config.MacroDropdowns[DropdownName] = DropdownProps.Value
+ConfigSaveButton.Func = SaveConfig
+UnloadButton.Func = function()
+    SaveConfig()
+    UILib:Unload()
 end
 
 Players.PlayerRemoving:Connect(function(plr)
@@ -145,6 +172,17 @@ Players.PlayerRemoving:Connect(function(plr)
         SaveConfig()
     end
 end)
+
+task.wait(0.5)
+
+for ToggleName, ToggleValue in pairs(getgenv().Octohub.Config.Toggles) do
+    warn(ToggleName)
+    writefile('debugfortoggles.json', HttpService:JSONEncode(getgenv().Toggles))
+    getgenv().Toggles[ToggleName]:SetValue(ToggleValue)
+end
+for DropdownName, DropdownValue in pairs(getgenv().Octohub.Config.MacroDropdowns) do
+    getgenv().Options[DropdownName]:SetValue(DropdownValue)
+end
 
 --// GAME RELATED FUNCTIONS \\--
 local function SkipWavesCall()
@@ -227,6 +265,22 @@ local function UpgradeUnit(UnitGUID)
     UnitEvent:FireServer("Upgrade", UnitGUID)
 end
 
+local function UpdateMacroDropdowns()
+    Macros = {}
+    local MacroFileList = listfiles("OctoHub"..[[/]].."Anime Vanguards"..[[/]].."Macro")
+    
+    for _, file in pairs(MacroFileList) do
+        if isdotjson(file) then
+            local MacroName = cfgbeautify(file)
+            table.insert(Macros, MacroName)
+        end
+    end
+    for _, Dropdown in pairs(MacroDropdowns) do
+        Dropdown.Values = Macros
+        Dropdown:SetValues()
+    end
+end
+
 --// MACRO FILES MANIPULATIONS \\--
 
 local function ReadMacroFile(MacroName: string)
@@ -250,7 +304,7 @@ local function CreateMacro(MacroName)
     if not MacroName or MacroName == "" or string.find(MacroName, '"') then return end
     local MacroFile = MacroPath..MacroName..".json"
     writefile(MacroPath..MacroName..".json", HttpService:JSONEncode({}))
-    Notify("Macro created")
+    Notify("Macro "..tostring(MacroName).." created")
     UpdateMacroDropdowns()
     CurrentMacroDropdown:SetValue(MacroName)
 end
@@ -264,7 +318,7 @@ local function DeleteMacro(MacroName)
     local MacroFile = MacroPath..MacroName..".json"
     if not isfile(MacroFile) then return end
     delfile(MacroPath..MacroName..".json")
-    Notify("Macro deleted")
+    Notify("Macro "..tostring(MacroName).." deleted")
     UpdateMacroDropdowns()
     CurrentMacroDropdown:SetValue()
 end
@@ -274,8 +328,8 @@ MacroDeleteButton.Func = function()
 end
 
 local function ChooseMacro(ChosenMacroName)
-    if not ChosenMacroName or type(ChosenMacroName) ~= "string" or not ChosenMacroName == "" then return end
-    if not isfile(MacroPath..ChosenMacroName..".json") then CurrentMacroDropdown:SetValues() return end
+    if not ChosenMacroName or type(ChosenMacroName) ~= "string" or ChosenMacroName == "" then return end
+    if not isfile(MacroPath..ChosenMacroName..".json") then UpdateMacroDropdowns() return end
     CurrentMacroName = ChosenMacroName
     CurrentMacroData = ReadMacroFile(CurrentMacroName)
     Notify("Macro "..CurrentMacroName.." was loaded.")
@@ -290,8 +344,10 @@ UpdateMacroDropdowns()
 
 local MacroPlaying = false
 local function PlayMacro()
+    if (not CurrentMacroName or not CurrentRecordData) and MacroPlaying then Notify("Invalid macro") return end
     MacroPlaying = not MacroPlaying
     if MacroPlaying then
+        if not CurrentMacroData then return end
         for stepCount, stepData in pairs(CurrentMacroData) do
             if not MacroPlaying then break end
             task.wait(0.25)
@@ -308,7 +364,7 @@ local function PlayMacro()
                 local UnitRotation = stepData[5]
                 if UnitData["Price"] > CurrentYen then
                     MacroStatusLabel:SetText("Placing "..UnitName..", waiting for "..tostring(UnitData["Price"]))
-                    repeat task.wait() until PlayerYenHandler:GetYen() >= UnitData["Price"]
+                    repeat task.wait() if not MacroPlaying then return end until PlayerYenHandler:GetYen() >= UnitData["Price"]
                 end
                 PlaceUnit(UnitName, UnitPos, UnitRotation)
             elseif stepName == "Sell" then
@@ -334,7 +390,9 @@ local function PlayMacro()
                 MacroStatusLabel:SetText("Upgrading "..UnitName)
                 if UpgradePrice > CurrentYen then
                     MacroStatusLabel:SetText("Upgrading "..UnitName..", waiting for "..tostring(UpgradePrice))
-                    repeat task.wait() until PlayerYenHandler:GetYen() >= UpgradePrice
+                    repeat task.wait()
+                        if not MacroPlaying then return end
+                    until PlayerYenHandler:GetYen() >= UpgradePrice
                 end
                 UpgradeUnit(UnitGUID)
             end
@@ -358,6 +416,7 @@ end
 makewriteable()
 
 MacroRecordToggle:OnChanged(function()
+    if not CurrentMacroName then Notify("Choose a macro first!") return end
     if PlayingMacro and MacroRecordToggle.Value == true then MacroRecordToggle:SetValue(false) Notify("You can't record a macro while playing a macro..") return end
     RecordingMacro = MacroRecordToggle.Value
     if not RecordingMacro then
@@ -367,12 +426,15 @@ MacroRecordToggle:OnChanged(function()
         CurrentRecordStep = 1
         UpdateMacroDropdowns()
         Notify("Macro "..tostring(CurrentMacroName).." recording ended.")
+        MacroRecordStatusLabel:SetText("Recording Ended")
     else
+        MacroRecordStatusLabel:SetText("Recording Started")
         Notify("Macro "..tostring(CurrentMacroName).." recording started.")
     end
 end)
 
 local on_namecall = function(obj, ...)
+    if UILib.Unloaded then return gameNamecall(obj, ...) end
     local args = {...}
     local method = tostring(getnamecallmethod())
     local isRemoteMethod = method == "FireServer" or method == "InvokeServer"

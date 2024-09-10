@@ -1,6 +1,6 @@
 local repo = "https://raw.githubusercontent.com/r1sIngisgood/octohub/main/"
-local UILib = loadstring(game:HttpGet(repo.."UILib/Linoria.lua"))
-local SaveManager = loadstring(game:HttpGet(repo.."UILib/SaveManager.lua"))
+local UILib = loadstring(game:HttpGet("https://raw.githubusercontent.com/r1sIngisgood/octohub/main/UILib/Linoria.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/r1sIngisgood/octohub/main/UILib/SaveManager.lua"))()
 
 --// IG SERVICES \\--
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -44,8 +44,8 @@ local Tabs = {
     UISettings = Window:AddTab('UI Settings')
 }
 
-local MacroLeftGroupBox = Tabs.Macro:AddLeftGroupbox('Macro1')
-local MacroRightGroupBox = Tabs.Macro:AddRightGroupbox('Macro1')
+local MacroLeftGroupBox = Tabs.Macro:AddLeftGroupbox('Macro Settings')
+local MacroRightGroupBox = Tabs.Macro:AddRightGroupbox('Macros')
 
 local function SkipWavesCall()
     StartWavesEvent:FireServer("Skip")

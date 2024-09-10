@@ -48,7 +48,7 @@ local MacroSettingsBox = Tabs.Macro:AddLeftGroupbox('Macro Settings')
 local MacroRightGroupBox = Tabs.Macro:AddRightGroupbox('Macros')
 
 local MacroPlayToggle = MacroSettingsBox:AddToggle("MacroPlayToggle", {Text = "Play Macro", Default = false, Tooltip = "Play Selected Macro"})
-local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values =  {"None"}, Default = 1, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here"})
+local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values =  {}, AllowNull = true, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here"})
 local MacroRecordToggle = MacroSettingsBox:AddToggle("MacroRecordToggle", {Text = "Record Macro", Tooltip = "Starts a macro recording. Toggle off to end it."})
 
 

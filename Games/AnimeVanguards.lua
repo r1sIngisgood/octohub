@@ -291,14 +291,15 @@ local function PlayMacro()
                 SellUnit(UnitGUID)
             elseif stepName == "Upgrade" then
                 local UnitPos = string_to_vector3(stepData[2])
-                local UnitGUID = GetUnitGUIDFromPos(UnitPos)
-
+                
+                local UnitGUID
                 local PlacedUnitData
                 repeat
-                    task.wait(0.1)
+                    UnitGUID = GetUnitGUIDFromPos(UnitPos)
                     warn(UnitGUID)
                     PlacedUnitData = GetPlacedUnitDataFromGUID(UnitGUID)
-                until PlacedUnitData ~= nil
+                    task.wait(0.1)
+                until PlacedUnitData ~= nil and UnitGUID ~= nil
 
                 local UpgradeLevel = PlacedUnitData["UpgradeLevel"]
                 local UpgradePrice = PlacedUnitData["UnitObject"]["Data"]["Upgrades"][UpgradeLevel+1]["Price"]

@@ -5,23 +5,25 @@ if not isfolder("OctoHub"..[[/]].."Anime Vanguards"..[[/]].."Config") then makef
 
 local repo = "https://raw.githubusercontent.com/r1sIngisgood/octohub/main/"
 local UILib = loadstring(game:HttpGet("https://raw.githubusercontent.com/r1sIngisgood/octohub/main/UILib/Linoria.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/r1sIngisgood/octohub/main/UILib/SaveManager.lua"))()
+local ConfigManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/r1sIngisgood/octohub/main/ConfigManager.lua"))()
 
 --// IG SERVICES \\--
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
+local StarterPlayer = game:GetService("StarterPlayer")
 local VirtualUser = game:GetService("VirtualUser")
 local Players = game:GetService("Players")
 
 --// GAME MODULES \\--
-local ModulesFolder = ReplicatedStorage.Modules
+local ReplicatedModulesFolder = ReplicatedStorage.Modules
+local StarterPlayerModulesFolder = StarterPlayer.Modules
 
-local EntityIDHandler = require(ModulesFolder.Data.Entities.EntityIDHandler)
-local UnitsModule = require(game:GetService("ReplicatedStorage").Modules.Data.Entities.Units)
-local ClientUnitHandler = require(game:GetService("StarterPlayer").Modules.Gameplay.ClientUnitHandler)
-local PlayerYenHandler = require(game:GetService("StarterPlayer").Modules.Gameplay.PlayerYenHandler)
-local GameHandler = require(game:GetService("ReplicatedStorage").Modules.Gameplay.GameHandler)
-local UnitPlacementsHandler = require(game:GetService("StarterPlayer").Modules.Gameplay.UnitManager.UnitPlacementsHandler)
+local EntityIDHandler = require(ReplicatedModulesFolder.Data.Entities.EntityIDHandler)
+local UnitsModule = require(ReplicatedModulesFolder.Data.Entities.Units)
+local ClientUnitHandler = require(StarterPlayerModulesFolder.Gameplay.ClientUnitHandler)
+local PlayerYenHandler = require(StarterPlayerModulesFolder.Gameplay.PlayerYenHandler)
+local GameHandler = require(ReplicatedModulesFolder.Gameplay.GameHandler)
+local UnitPlacementsHandler = require(StarterPlayerModulesFolder.Gameplay.UnitManager.UnitPlacementsHandler)
 
 --// IG OBJECTS \\--
 local NetworkingFolder = ReplicatedStorage:WaitForChild("Networking")
@@ -40,7 +42,6 @@ local EmptyFunc = function() end
 
 --// Script Runtime Values \\--
 local Options = getgenv().Options
-local Toggles = Options.Toggles
 
 local Functions = {CreateMacro = EmptyFunc, DeleteMacro = EmptyFunc, ChooseMacro = EmptyFunc}
 local Macros = {}
@@ -72,7 +73,8 @@ local Window = UILib:CreateWindow({
 })
 
 local Tabs = {
-    Macro = Window:AddTab('Main'),
+    Main = Window:AddTab('Main'),
+    Macro = Window:AddTab('Macro'),
     UISettings = Window:AddTab('UI Settings')
 }
 
@@ -103,7 +105,7 @@ MacroPlayDepBox:SetupDependencies({
     {MacroPlayToggle, true}
 })
 
-local MacroDropdowns = {CurrentMacroDropdown}
+local MacroDropdowns = {["CurrentMacroDropdown"] = CurrentMacroDropdown}
 local function UpdateMacroDropdowns()
     Macros = {}
     local MacroFileList = listfiles("OctoHub"..[[/]].."Anime Vanguards"..[[/]].."Macro")
@@ -119,6 +121,28 @@ local function UpdateMacroDropdowns()
         Dropdown:SetValues()
     end
 end
+
+--// CONFIG \\--
+getgenv().Octohub = {}
+local genvocto = getgenv().Octohub
+genvocto.Config = ConfigManager.LoadConfig(Players.LocalPlayer.Name, "AnimeVanguards") or {Toggles = {}, MacroDropdowns = {}}
+
+local function SaveConfig()
+    ConfigManager.SaveConfig(Players.LocalPlayer.Name, "AnimeVanguards", genvocto.Config)
+end
+
+for ToggleName, ToggleProps in pairs(getgenv().Toggles) do
+    genvocto.Config.Toggles[ToggleName] = ToggleProps.Value
+end
+for DropdownName, DropdownProps in pairs(MacroDropdowns) do
+    genvocto.Config.MacroDropdowns[DropdownName] = DropdownProps.Value
+end
+
+Players.PlayerRemoving:Connect(function(plr)
+    if plr == Players.LocalPlayer then
+        SaveConfig()
+    end
+end)
 
 --// GAME RELATED FUNCTIONS \\--
 local function SkipWavesCall()
@@ -203,7 +227,6 @@ end
 
 --// MACRO FILES MANIPULATIONS \\--
 
-
 local function ReadMacroFile(MacroName: string)
     if not MacroName then return end
     if not isfile(MacroPath..MacroName..".json") then return end
@@ -227,6 +250,7 @@ local function CreateMacro(MacroName)
     writefile(MacroPath..MacroName..".json", HttpService:JSONEncode({}))
     Notify("Macro created")
     UpdateMacroDropdowns()
+    CurrentMacroDropdown:SetValue(MacroName)
 end
 Functions.CreateMacro = CreateMacro
 CreateMacroButton.Func = function()
@@ -240,6 +264,7 @@ local function DeleteMacro(MacroName)
     delfile(MacroPath..MacroName..".json")
     Notify("Macro deleted")
     UpdateMacroDropdowns()
+    CurrentMacroDropdown:SetValue()
 end
 Functions.DeleteMacro = DeleteMacro
 MacroDeleteButton.Func = function()
@@ -266,7 +291,8 @@ local function PlayMacro()
     MacroPlaying = not MacroPlaying
     if MacroPlaying then
         for stepCount, stepData in pairs(CurrentMacroData) do
-            task.wait(0.1)
+            if not MacroPlaying then break end
+            task.wait(0.25)
             local CurrentYen = PlayerYenHandler:GetYen()
 
             local stepName = stepData[1]
@@ -296,7 +322,6 @@ local function PlayMacro()
                 local PlacedUnitData
                 repeat
                     UnitGUID = GetUnitGUIDFromPos(UnitPos)
-                    warn(UnitGUID)
                     PlacedUnitData = GetPlacedUnitDataFromGUID(UnitGUID)
                     task.wait(0.1)
                 until PlacedUnitData ~= nil and UnitGUID ~= nil
@@ -312,6 +337,7 @@ local function PlayMacro()
                 UpgradeUnit(UnitGUID)
             end
         end
+        MacroStatusLabel:SetText("DONE")
     end
 end
 
@@ -334,9 +360,13 @@ MacroRecordToggle:OnChanged(function()
     RecordingMacro = MacroRecordToggle.Value
     if not RecordingMacro then
         local success = WriteMacroFile(CurrentMacroName, CurrentRecordData)
+        CurrentMacroData = CurrentRecordData
         CurrentRecordData = {}
         CurrentRecordStep = 1
         UpdateMacroDropdowns()
+        Notify("Macro "..tostring(CurrentMacroName).." recording ended.")
+    else
+        Notify("Macro "..tostring(CurrentMacroName).." recording started.")
     end
 end)
 
@@ -361,7 +391,6 @@ local on_namecall = function(obj, ...)
                     local UnitPos = UnitModel.HumanoidRootPart.Position
 
                     CurrentRecordData[CurrentRecordStep] = {"Sell", tostring(UnitPos)}
-                    warn(tostring(UnitPos))
                 elseif args[1] == "Upgrade" then
                     local UnitGUID = args[2]
                     local UnitModel = GetUnitModelFromGUID(UnitGUID)

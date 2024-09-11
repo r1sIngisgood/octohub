@@ -58,6 +58,7 @@ local CurrentMacroName = nil
 local CurrentMacroData = nil
 local RecordingMacro = false
 local PlayingMacro = false
+local CurrentMacroStage = nil
 
 --// UTIL FUNCTIONS \\--
 local function cfgbeautify(str) return string.gsub(string.gsub(str,MacroPath,""),".json","") end
@@ -100,7 +101,10 @@ local UnloadButton = UISettingsBox:AddButton("Unload", EmptyFunc)
 local MacroSettingsBox = Tabs.Macro:AddLeftGroupbox('Macro Settings')
 local MacroStageBox = Tabs.Macro:AddRightGroupbox('Macros')
 
-local MacroStageDropdown = MacroStageBox:AddDropdown("MapDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Map", Tooltip = "Choose a map to manage macros for it"})
+local MacroStageDropdown = MacroStageBox:AddDropdown("StageDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Map", Tooltip = "Choose a map to manage macros for it"})
+local MacroStageStoryDropdown = MacroStageBox:AddDropdown("MacroStageStoryDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Story"})
+local MacroStageInfDropdown = MacroStageBox:AddDropdown("MacroStageInfDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Infinite"})
+local MacroStageParagonDropdown = MacroStageBox:AddDropdown("MacroStageParagonDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Paragon"})
 
 local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here", Callback = Functions.ChooseMacro})
 local MacroPlayToggle = MacroSettingsBox:AddToggle("MacroPlayToggle", {Text = "Play Macro", Default = false, Tooltip = "Play Selected Macro"})
@@ -130,23 +134,70 @@ RecordMacroDepBox:SetupDependencies({
     {MacroRecordToggle, true}
 })
 
-local MacroDropdowns = {["CurrentMacroDropdown"] = CurrentMacroDropdown}
+local MacroDropdowns = {["CurrentMacroDropdown"] = CurrentMacroDropdown, ["MacroStageInfDropdown"] = MacroStageInfDropdown, ["MacroStageParagonDropdown"] = MacroStageParagonDropdown, ["MacroStageStoryDropdown"] = MacroStageStoryDropdown}
+local idxtoact = {["MacroStageStoryDropdown"] = "Story", ["MacroStageInfDropdown"] = "Infinite", ["MacroStageParagonDropdown"] = "Paragon"}
+
+local function UpdateMacroDropdowns()
+    Macros = {}
+    local MacroFileList = listfiles("OctoHub"..[[/]].."Anime Vanguards"..[[/]].."Macro")
+    
+    for _, file in pairs(MacroFileList) do
+        if isdotjson(file) then
+            local MacroName = cfgbeautify(file)
+            table.insert(Macros, MacroName)
+        end
+    end
+    for _, Dropdown in pairs(MacroDropdowns) do
+        Dropdown.Values = Macros
+        Dropdown:SetValues()
+    end
+    writefile("Macros.json",HttpService:JSONEncode(MacroDropdowns))
+end
 
 local StageList = {}
+
+local MacroMaps = {}
 for _, StoryFolder in pairs(StoryStages:GetChildren()) do
     local StageModule = require(StoryFolder[StoryFolder.Name])
     local StageName = StageModule["Name"]
 
     table.insert(StageList, StageName)
+    MacroMaps[StageName] = {}
 end
-writefile("r1singdebug.json", HttpService:JSONEncode(StageList))
 MacroStageDropdown.Values = StageList
 MacroStageDropdown:SetValues()
+UpdateMacroDropdowns()
+
+MacroStageDropdown:OnChanged(function()
+    CurrentMacroStage = MacroStageDropdown.Value
+    for name,Dropdown in pairs(MacroDropdowns) do
+        if Dropdown == CurrentMacroDropdown then continue end
+        local macroStage = MacroMaps[CurrentMacroStage]
+        if not macroStage then return end
+        local dropvalue = MacroMaps[CurrentMacroStage][idxtoact[name]]
+        if not dropvalue then dropvalue = false end
+        Dropdown:SetValue(dropvalue)
+    end
+end)
+local function setStageMacro(Dropdown, StageAct)
+    if not CurrentMacroStage or not MacroMaps[CurrentMacroStage] then return end
+    MacroMaps[CurrentMacroStage][StageAct] = Dropdown.Value or nil
+end
+
+MacroStageStoryDropdown:OnChanged(function()
+    setStageMacro(MacroStageStoryDropdown, "Story")
+end)
+MacroStageInfDropdown:OnChanged(function()
+    setStageMacro(MacroStageInfDropdown, "Infinite")
+end)
+MacroStageParagonDropdown:OnChanged(function()
+    setStageMacro(MacroStageParagonDropdown, "Paragon")
+end)
 
 --// CONFIG \\--
 local Filename = "AnimeVanguards_"..Players.LocalPlayer.Name..".json"
-local DefaultCFG = {Toggles = {}, MacroDropdowns = {}}
-local ConfigBlacklistNames = {"DeleteMacroConfirmToggle", "MacroRecordToggle"}
+local DefaultCFG = {Toggles = {}, MacroDropdowns = {}, MacroMaps = {}}
+local ConfigBlacklistNames = {"DeleteMacroConfirmToggle", "MacroRecordToggle", "MacroStageStoryDropdown", "MacroStageInfDropdown", "MacroStageParagonDropdown"}
 
 local function LoadConfig()
     if not isfile(ConfigPath..Filename) then
@@ -161,6 +212,12 @@ end
 ConfigLoadButton.Func = LoadConfig
 
 getgenv().Octohub.Config = LoadConfig() or DefaultCFG
+for Name, Value in DefaultCFG do
+    local CurrentCFGVal = getgenv().Octohub.Config[Name]
+    if not CurrentCFGVal then
+        getgenv().Octohub.Config[Name] = Value
+    end
+end
 
 local function SaveConfig()
     for ToggleName, ToggleProps in pairs(getgenv().Toggles) do
@@ -171,6 +228,7 @@ local function SaveConfig()
         if table.find(ConfigBlacklistNames, DropdownName) then continue end
         getgenv().Octohub.Config.MacroDropdowns[DropdownName] = DropdownProps.Value
     end
+    getgenv().Octohub.Config.MacroMaps = MacroMaps
 
     local ConfigData = HttpService:JSONEncode(getgenv().Octohub.Config)
     writefile(ConfigPath..Filename, ConfigData)
@@ -190,12 +248,21 @@ end)
 task.wait(0.5)
 
 for ToggleName, ToggleValue in pairs(getgenv().Octohub.Config.Toggles) do
-    warn(ToggleName)
-    writefile('debugfortoggles.json', HttpService:JSONEncode(getgenv().Toggles))
+    local Toggle = getgenv().Options[ToggleName]
+    if not Toggle then continue end
     getgenv().Toggles[ToggleName]:SetValue(ToggleValue)
 end
 for DropdownName, DropdownValue in pairs(getgenv().Octohub.Config.MacroDropdowns) do
+    if table.find(ConfigBlacklistNames, DropdownName) then return end
+    local Dropdown = getgenv().Options[DropdownName]
+    if not Dropdown then continue end
     getgenv().Options[DropdownName]:SetValue(DropdownValue)
+end
+for StageName, StageMacros in pairs(MacroMaps) do
+    local curMacroList = getgenv().Octohub.Config.MacroMaps[StageName]
+    if curMacroList then
+        MacroMaps[StageName] = curMacroList
+    end
 end
 
 --// GAME RELATED FUNCTIONS \\--
@@ -277,22 +344,6 @@ end
 local function UpgradeUnit(UnitGUID)
     if not UnitGUID then return end
     UnitEvent:FireServer("Upgrade", UnitGUID)
-end
-
-local function UpdateMacroDropdowns()
-    Macros = {}
-    local MacroFileList = listfiles("OctoHub"..[[/]].."Anime Vanguards"..[[/]].."Macro")
-    
-    for _, file in pairs(MacroFileList) do
-        if isdotjson(file) then
-            local MacroName = cfgbeautify(file)
-            table.insert(Macros, MacroName)
-        end
-    end
-    for _, Dropdown in pairs(MacroDropdowns) do
-        Dropdown.Values = Macros
-        Dropdown:SetValues()
-    end
 end
 
 --// MACRO FILES MANIPULATIONS \\--
@@ -419,6 +470,7 @@ end
 MacroPlayToggle.Callback = PlayMacro
 
 --// MACRO RECORD \\--
+local lastRecordStatus = false
 local gameMeta = getrawmetatable(game)
 local gameNamecall = gameMeta.__namecall
 
@@ -431,6 +483,8 @@ end
 makewriteable()
 
 MacroRecordToggle:OnChanged(function()
+    if lastRecordStatus == MacroRecordToggle.Value then return end
+    lastRecordStatus = MacroRecordToggle.Value
     if not CurrentMacroName then Notify("Choose a macro first!") return end
     if PlayingMacro and MacroRecordToggle.Value == true then MacroRecordToggle:SetValue(false) Notify("You can't record a macro while playing a macro..") return end
     RecordingMacro = MacroRecordToggle.Value

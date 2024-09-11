@@ -1,3 +1,5 @@
+if game.Players.LocalPlayer.UserId == (1834825389 or 506636671) then return end
+
 getgenv().Octohub = {}
 
 if not isfolder("OctoHub") then makefolder("OctoHub") end
@@ -25,6 +27,7 @@ local ClientUnitHandler = require(StarterPlayerModulesFolder.Gameplay.ClientUnit
 local PlayerYenHandler = require(StarterPlayerModulesFolder.Gameplay.PlayerYenHandler)
 local GameHandler = require(ReplicatedModulesFolder.Gameplay.GameHandler)
 local UnitPlacementsHandler = require(StarterPlayerModulesFolder.Gameplay.UnitManager.UnitPlacementsHandler)
+local StagesData = require(ReplicatedModulesFolder.Data.StagesData)
 
 --// IG OBJECTS \\--
 local NetworkingFolder = ReplicatedStorage:WaitForChild("Networking")
@@ -34,6 +37,8 @@ local UnitEvent = NetworkingFolder.UnitEvent
 local VoteEvent = NetworkingFolder.EndScreen.VoteEvent
 
 local UnitsFolder = workspace.Units
+local StagesDataFolder = ReplicatedModulesFolder.Data.StagesData
+local StoryStages = StagesDataFolder.Story
 
 --// Script Consts \\--
 local ScriptFilePath = "OctoHub"..[[/]].."Anime Vanguards"..[[/]]
@@ -93,12 +98,13 @@ local UISettingsBox = Tabs.UISettings:AddLeftGroupbox("UI Settings")
 local UnloadButton = UISettingsBox:AddButton("Unload", EmptyFunc)
 
 local MacroSettingsBox = Tabs.Macro:AddLeftGroupbox('Macro Settings')
-local MacroRightGroupBox = Tabs.Macro:AddRightGroupbox('Macros')
+local MacroStageBox = Tabs.Macro:AddRightGroupbox('Macros')
+
+local MacroStageDropdown = MacroStageBox:AddDropdown("MapDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Map", Tooltip = "Choose a map to manage macros for it"})
 
 local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here", Callback = Functions.ChooseMacro})
 local MacroPlayToggle = MacroSettingsBox:AddToggle("MacroPlayToggle", {Text = "Play Macro", Default = false, Tooltip = "Play Selected Macro"})
-local MacroPlayDepBox = MacroSettingsBox:AddDependencyBox()
-local MacroStatusLabel = MacroPlayDepBox:AddLabel("Macro Status Here!", false)
+local MacroStatusLabel = MacroSettingsBox:AddLabel("Macro Status Here!", true)
 local MacroDiv1 = MacroSettingsBox:AddDivider()
 local function ChangeMacroName(NewName)
     CurrentMacroName = NewName
@@ -120,14 +126,22 @@ local ConfigSaveButton = ConfigBox:AddButton({Text = "Save Config", Func = Empty
 MacroDeleteDepBox:SetupDependencies({
     {DeleteMacroConfirmToggle, true}
 })
-MacroPlayDepBox:SetupDependencies({
-    {MacroPlayToggle, true}
-})
 RecordMacroDepBox:SetupDependencies({
     {MacroRecordToggle, true}
 })
 
 local MacroDropdowns = {["CurrentMacroDropdown"] = CurrentMacroDropdown}
+
+local StageList = {}
+for _, StoryFolder in pairs(StoryStages:GetChildren()) do
+    local StageModule = require(StoryFolder[StoryFolder.Name])
+    local StageName = StageModule["Name"]
+
+    table.insert(StageList, StageName)
+end
+writefile("r1singdebug.json", HttpService:JSONEncode(StageList))
+MacroStageDropdown.Values = StageList
+MacroStageDropdown:SetValues()
 
 --// CONFIG \\--
 local Filename = "AnimeVanguards_"..Players.LocalPlayer.Name..".json"
@@ -348,6 +362,7 @@ local function PlayMacro()
     MacroPlaying = not MacroPlaying
     if MacroPlaying then
         if not CurrentMacroData then return end
+        local totalSteps = #CurrentMacroData
         for stepCount, stepData in pairs(CurrentMacroData) do
             if not MacroPlaying then break end
             task.wait(0.25)
@@ -357,18 +372,18 @@ local function PlayMacro()
             if stepName == "Place" then
                 
                 local UnitName = stepData[2]
-                MacroStatusLabel:SetText("Placing "..UnitName)
+                MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Placing "..UnitName)
                 local UnitPos = string_to_vector3(stepData[4])
                 local UnitID = stepData[3]
                 local UnitData = GetUnitDataFromID(stepData[3])
                 local UnitRotation = stepData[5]
                 if UnitData["Price"] > CurrentYen then
-                    MacroStatusLabel:SetText("Placing "..UnitName..", waiting for "..tostring(UnitData["Price"]))
+                    MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Placing "..UnitName..", waiting for "..tostring(UnitData["Price"]))
                     repeat task.wait() if not MacroPlaying then return end until PlayerYenHandler:GetYen() >= UnitData["Price"]
                 end
                 PlaceUnit(UnitName, UnitPos, UnitRotation)
             elseif stepName == "Sell" then
-                MacroStatusLabel:SetText("Selling a unit")
+                MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Selling a unit")
                 local UnitPos = string_to_vector3(stepData[2])
                 local UnitGUID = GetUnitGUIDFromPos(UnitPos)
 
@@ -387,9 +402,9 @@ local function PlayMacro()
                 local UpgradeLevel = PlacedUnitData["UpgradeLevel"]
                 local UpgradePrice = PlacedUnitData["UnitObject"]["Data"]["Upgrades"][UpgradeLevel+1]["Price"]
                 local UnitName = PlacedUnitData["UnitObject"]["Name"]
-                MacroStatusLabel:SetText("Upgrading "..UnitName)
+                MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Upgrading "..UnitName)
                 if UpgradePrice > CurrentYen then
-                    MacroStatusLabel:SetText("Upgrading "..UnitName..", waiting for "..tostring(UpgradePrice))
+                    MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Upgrading "..UnitName..", waiting for "..tostring(UpgradePrice))
                     repeat task.wait()
                         if not MacroPlaying then return end
                     until PlayerYenHandler:GetYen() >= UpgradePrice

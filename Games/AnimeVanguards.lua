@@ -32,9 +32,10 @@ local StagesData = require(ReplicatedModulesFolder.Data.StagesData)
 --// IG OBJECTS \\--
 local NetworkingFolder = ReplicatedStorage:WaitForChild("Networking")
 
-local StartWavesEvent = NetworkingFolder.SkipWaveEvent
+local SkipWaveEvent = NetworkingFolder.SkipWaveEvent
 local UnitEvent = NetworkingFolder.UnitEvent
 local VoteEvent = NetworkingFolder.EndScreen.VoteEvent
+local ShowEndScreenEvent = NetworkingFolder.EndScreen.ShowEndScreenEvent
 
 local UnitsFolder = workspace.Units
 local StagesDataFolder = ReplicatedModulesFolder.Data.StagesData
@@ -53,6 +54,7 @@ local Functions = {CreateMacro = EmptyFunc, DeleteMacro = EmptyFunc, ChooseMacro
 local Macros = {}
 local CurrentRecordStep = 1
 local CurrentRecordData = {}
+local CurrentUnits = {}
 
 local CurrentMacroName = nil
 local CurrentMacroData = nil
@@ -94,6 +96,7 @@ local Tabs = {
 
 local FarmSettingsBox = Tabs.Main:AddLeftGroupbox("Farm Settings")
 local AutoRetryToggle = FarmSettingsBox:AddToggle("AutoRetryToggle", {Text = "Auto Retry", Default = false, Tooltip = "Auto press the retry button"})
+local AutoNextStoryToggle = FarmSettingsBox:AddToggle("AutoNextStoryToggle", {Text = "Auto Next Story", Default = false, Tooltip = "Auto press the next story button"})
 
 local UISettingsBox = Tabs.UISettings:AddLeftGroupbox("UI Settings")
 local UnloadButton = UISettingsBox:AddButton("Unload", EmptyFunc)
@@ -246,11 +249,11 @@ Players.PlayerRemoving:Connect(function(plr)
 end)
 
 task.wait(0.5)
-
-for ToggleName, ToggleValue in pairs(getgenv().Octohub.Config.Toggles) do
-    local Toggle = getgenv().Options[ToggleName]
-    if not Toggle then continue end
-    getgenv().Toggles[ToggleName]:SetValue(ToggleValue)
+for StageName, StageMacros in pairs(MacroMaps) do
+    local curMacroList = getgenv().Octohub.Config.MacroMaps[StageName]
+    if curMacroList then
+        MacroMaps[StageName] = curMacroList
+    end
 end
 for DropdownName, DropdownValue in pairs(getgenv().Octohub.Config.MacroDropdowns) do
     if table.find(ConfigBlacklistNames, DropdownName) then return end
@@ -258,21 +261,34 @@ for DropdownName, DropdownValue in pairs(getgenv().Octohub.Config.MacroDropdowns
     if not Dropdown then continue end
     getgenv().Options[DropdownName]:SetValue(DropdownValue)
 end
-for StageName, StageMacros in pairs(MacroMaps) do
-    local curMacroList = getgenv().Octohub.Config.MacroMaps[StageName]
-    if curMacroList then
-        MacroMaps[StageName] = curMacroList
-    end
+for ToggleName, ToggleValue in pairs(getgenv().Octohub.Config.Toggles) do
+    local Toggle = getgenv().Options[ToggleName]
+    if not Toggle then continue end
+    getgenv().Toggles[ToggleName]:SetValue(ToggleValue)
 end
 
 --// GAME RELATED FUNCTIONS \\--
 local function SkipWavesCall()
-    StartWavesEvent:FireServer("Skip")
+    SkipWaveEvent:FireServer("Skip")
 end
 
 local function RetryCall()
     VoteEvent:FireServer("Retry")
 end
+
+local function NextCall()
+    VoteEvent:FireServer("Next")
+end
+
+ShowEndScreenEvent.OnClientEvent:Connect(function(...)
+    task.wait(5)
+    local EndScreenData = ...
+    if AutoNextStoryToggle.Value and EndScreenData["StageType"] == "Story" and EndScreenData["Status"] ~= "Failed" then
+        NextCall()
+    elseif AutoRetryToggle.Value then
+        RetryCall()
+    end
+end)
 
 local function GetUnitIDFromName(UnitName: string)
     if not UnitName then return end
@@ -313,7 +329,8 @@ local function GetUnitGUIDFromPos(Pos: Vector3)
     for i, v in pairs(UnitsFolder:GetChildren()) do
         local vHRP = v:FindFirstChild("HumanoidRootPart")
         if not vHRP then return end
-        if (vHRP.Position - Pos).Magnitude <= 1 then
+        warn(vHRP.Position, Pos)
+        if (vHRP.Position - Pos).Magnitude <= 2 or vHRP.Position == Pos then
             UnitGUID = v.Name
         end
     end
@@ -333,7 +350,7 @@ local function PlaceUnit(UnitIDOrName: number|string, Pos: Vector3, Rotation: nu
     end
     local Payload = {UnitName, UnitID, Pos, Rotation}
 
-    UnitEvent:FireServer("Render", Payload)
+    return UnitEvent:FireServer("Render", Payload)
 end
 
 local function SellUnit(UnitGUID: string)
@@ -410,7 +427,7 @@ UpdateMacroDropdowns()
 local MacroPlaying = false
 local function PlayMacro()
     if (not CurrentMacroName or not CurrentRecordData) and MacroPlaying then Notify("Invalid macro") return end
-    MacroPlaying = not MacroPlaying
+    MacroPlaying = MacroPlayToggle.Value
     if MacroPlaying then
         if not CurrentMacroData then return end
         local totalSteps = #CurrentMacroData
@@ -421,18 +438,19 @@ local function PlayMacro()
 
             local stepName = stepData[1]
             if stepName == "Place" then
-                
+                local UnitData = GetUnitDataFromID(stepData[3])
                 local UnitName = stepData[2]
                 MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Placing "..UnitName)
                 local UnitPos = string_to_vector3(stepData[4])
                 local UnitID = stepData[3]
-                local UnitData = GetUnitDataFromID(stepData[3])
+                
                 local UnitRotation = stepData[5]
                 if UnitData["Price"] > CurrentYen then
                     MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Placing "..UnitName..", waiting for "..tostring(UnitData["Price"]))
                     repeat task.wait() if not MacroPlaying then return end until PlayerYenHandler:GetYen() >= UnitData["Price"]
                 end
-                PlaceUnit(UnitName, UnitPos, UnitRotation)
+                warn(PlaceUnit(UnitID, UnitPos, UnitRotation))
+                --CurrentUnits[UnitPos] = UnitName
             elseif stepName == "Sell" then
                 MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Selling a unit")
                 local UnitPos = string_to_vector3(stepData[2])
@@ -445,6 +463,7 @@ local function PlayMacro()
                 local UnitGUID
                 local PlacedUnitData
                 repeat
+                    warn(UnitPos, UnitGUID, PlacedUnitData)
                     UnitGUID = GetUnitGUIDFromPos(UnitPos)
                     PlacedUnitData = GetPlacedUnitDataFromGUID(UnitGUID)
                     task.wait(0.1)

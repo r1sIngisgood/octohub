@@ -63,8 +63,8 @@ local CurrentUnits = {}
 local CurrentMacroName = nil
 local CurrentMacroData = nil
 local RecordingMacro = false
-local PlayingMacro = false
 local CurrentMacroStage = nil
+local MacroPlaying = false
 
 --// UTIL FUNCTIONS \\--
 local function cfgbeautify(str) return string.gsub(string.gsub(str,MacroPath,""),".json","") end
@@ -131,6 +131,9 @@ local MacroRecordToggle = MacroSettingsBox:AddToggle("MacroRecordToggle", {Text 
 local RecordMacroDepBox = MacroSettingsBox:AddDependencyBox()
 local MacroRecordStatusLabel = RecordMacroDepBox:AddLabel("Recording status here!")
 
+local UnitGroupBox = Tabs.Macro:AddLeftGroupbox("Macro Units:")
+local MacroUnitsLabel = UnitGroupBox:AddLabel("", true)
+
 local ConfigBox = Tabs.Config:AddLeftGroupbox("ConfigBox")
 local ConfigLoadButton = ConfigBox:AddButton({Text = "Load Config", Func = EmptyFunc})
 local ConfigSaveButton = ConfigBox:AddButton({Text = "Save Config", Func = EmptyFunc})
@@ -141,6 +144,19 @@ MacroDeleteDepBox:SetupDependencies({
 RecordMacroDepBox:SetupDependencies({
     {MacroRecordToggle, true}
 })
+local randomScreenGui = Instance.new("ScreenGui")
+randomScreenGui.Parent = game.CoreGui
+local HideShowButton = Instance.new("TextButton")
+HideShowButton.Text = ""
+HideShowButton.BackgroundColor3 = Color3.new(0.231372, 0.231372, 0.231372)
+HideShowButton.BorderColor3 = Color3.new(0.086274, 0.086274, 0.086274)
+HideShowButton.Position = UDim2.new(1,0,0.6,0)
+HideShowButton.Size = UDim2.new(0,50,0,50)
+HideShowButton.AnchorPoint = Vector2.new(1,0.5)
+HideShowButton.Parent = randomScreenGui
+HideShowButton.Activated:Connect(function()
+    task.spawn(UILib.Toggle)
+end)
 
 local MacroDropdowns = {["CurrentMacroDropdown"] = CurrentMacroDropdown, ["MacroStageInfDropdown"] = MacroStageInfDropdown, ["MacroStageParagonDropdown"] = MacroStageParagonDropdown, ["MacroStageStoryDropdown"] = MacroStageStoryDropdown}
 local idxtoact = {["MacroStageStoryDropdown"] = "Story", ["MacroStageInfDropdown"] = "Infinite", ["MacroStageParagonDropdown"] = "Paragon"}
@@ -250,6 +266,8 @@ UnloadButton.Func = function()
         Con:Disconnect()
     end
 
+    randomScreenGui:Destroy()
+    
     SaveConfig()
     UILib:Unload()
 end
@@ -282,11 +300,9 @@ for DropdownName, DropdownValue in pairs(getgenv().Octohub.Config.MacroDropdowns
     getgenv().Options[DropdownName]:SetValue(DropdownValue)
 end
 for StageName, StageMacros in pairs(MacroMaps) do
-    print(StageNumToName[GameHandler["GameData"]["Stage"]])
     if StageName == StageNumToName[GameHandler["GameData"]["Stage"]] then
         local MacroName = MacroMaps[StageName][GameHandler["GameData"]["StageType"]]
         CurrentMacroDecide = MacroName
-        print(MacroName)
     end
 end
 getgenv().Options["CurrentMacroDropdown"]:SetValue(CurrentMacroDecide)
@@ -325,8 +341,11 @@ local AutoMacroReplayCon = GameRestartedEvent.OnClientEvent:Connect(function(...
         task.wait(0.3)
         MacroPlayToggle:SetValue(true)
     end
-    task.wait(5)
+end)
+
+local AutoStartGameCon = GameRestartedEvent.OnClientEvent:Connect(function(...)
     if AutoStartToggle.Value then
+        task.wait(5)
         SkipWavesCall()
     end
 end)
@@ -343,6 +362,7 @@ local function GetPlacedUnitDataFromGUID(UnitGUID: string)
     local PlacedUnitData
     local AllPlacedUnits
     repeat task.wait(0.1)
+        if UILib.Unloaded or not MacroPlaying then return end
         AllPlacedUnits = UnitPlacementsHandler:GetAllPlacedUnits()
         PlacedUnitData = AllPlacedUnits[UnitGUID]
     until PlacedUnitData ~= nil
@@ -375,6 +395,7 @@ local function GetUnitGUIDFromPos(Pos: Vector3)
     local UnitData
     local repeatCount = 0
     repeat task.wait(0.1)
+        if UILib.Unloaded or not MacroPlaying then return end
         for UnitPos, Data in pairs(CurrentUnits) do
             if (UnitPos - Pos).Magnitude <= 2 or (Vector3.new(UnitPos.X, 0, UnitPos.Z) - Vector3.new(Pos.X, 0, Pos.Z)).Magnitude <= 2 then
                 UnitData = Data
@@ -498,8 +519,23 @@ local function ChooseMacro(ChosenMacroName)
     if not ChosenMacroName or type(ChosenMacroName) ~= "string" or ChosenMacroName == "" then return end
     if not isfile(MacroPath..ChosenMacroName..".json") then UpdateMacroDropdowns() return end
     CurrentMacroName = ChosenMacroName
-    CurrentMacroData = ReadMacroFile(CurrentMacroName)
+    local tempMacroData = ReadMacroFile(CurrentMacroName)
+    local macroSteps = tempMacroData["Steps"]
+    if not macroSteps then
+        tempMacroData = {["UnitsData"] = {"No units data"}, ["Steps"] = tempMacroData}
+        WriteMacroFile(ChosenMacroName, tempMacroData)
+    end
+    CurrentMacroData = tempMacroData
     Notify("Macro "..CurrentMacroName.." was loaded.")
+    local MentionedUnits = {}
+    local unitsString = ""
+    for _, unit in pairs(CurrentMacroData["UnitsData"]) do
+        if not table.find(MentionedUnits, unit) then
+            table.insert(MentionedUnits, unit)
+            unitsString = unitsString..unit..", \n"
+        end
+    end
+    MacroUnitsLabel:SetText(unitsString)
     UpdateMacroDropdowns()
 end
 Functions.ChooseMacro = ChooseMacro
@@ -508,16 +544,16 @@ CurrentMacroDropdown:OnChanged(ChooseMacro)
 UpdateMacroDropdowns()
 
 --// MACRO PLAY \\--
-
-local MacroPlaying = false
 local function PlayMacro()
     if (not CurrentMacroName or not CurrentRecordData) and MacroPlaying then Notify("Invalid macro") return end
+    
     MacroPlaying = MacroPlayToggle.Value
     if MacroPlaying then
         if not CurrentMacroData then return end
-        local totalSteps = #CurrentMacroData
-        for stepCount, stepData in pairs(CurrentMacroData) do
+        local totalSteps = #CurrentMacroData["Steps"]
+        for stepCount, stepData in pairs(CurrentMacroData["Steps"]) do
             if not MacroPlaying then break end
+            if UILib.Unloaded then break end
             task.wait(0.5)
             local CurrentYen = PlayerYenHandler:GetYen()
 
@@ -532,7 +568,7 @@ local function PlayMacro()
                 local UnitRotation = stepData[5]
                 if UnitData["Price"] > CurrentYen then
                     MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Placing "..UnitName..", waiting for "..tostring(UnitData["Price"]))
-                    repeat task.wait() if not MacroPlaying then return end until PlayerYenHandler:GetYen() >= UnitData["Price"]
+                    repeat task.wait() if UILib.Unloaded or not MacroPlaying then return end until PlayerYenHandler:GetYen() >= UnitData["Price"]
                 end
                 PlaceUnit(UnitID, UnitPos, UnitRotation)
             elseif stepName == "Sell" then
@@ -544,7 +580,6 @@ local function PlayMacro()
             elseif stepName == "Upgrade" then
                 local UnitPos = string_to_vector3(stepData[2])
                 
-                warn(stepName)
                 local UnitGUID = GetUnitGUIDFromPos(UnitPos)
                 local PlacedUnitData = GetPlacedUnitDataFromGUID(UnitGUID)
 
@@ -555,7 +590,7 @@ local function PlayMacro()
                 if UpgradePrice > CurrentYen then
                     MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Upgrading "..UnitName..", waiting for "..tostring(UpgradePrice))
                     repeat task.wait()
-                        if not MacroPlaying then return end
+                        if UILib.Unloaded or not MacroPlaying then return end
                     until PlayerYenHandler:GetYen() >= UpgradePrice
                 end
                 UpgradeUnit(UnitGUID)
@@ -581,14 +616,21 @@ end
 makewriteable()
 
 MacroRecordToggle:OnChanged(function()
+    if MacroPlaying and MacroRecordToggle.Value == true then MacroRecordToggle:SetValue(false) Notify("You can't record a macro while playing a macro..") return end
     if lastRecordStatus == MacroRecordToggle.Value then return end
     lastRecordStatus = MacroRecordToggle.Value
     if not CurrentMacroName then Notify("Choose a macro first!") return end
-    if PlayingMacro and MacroRecordToggle.Value == true then MacroRecordToggle:SetValue(false) Notify("You can't record a macro while playing a macro..") return end
     RecordingMacro = MacroRecordToggle.Value
     if not RecordingMacro then
-        local success = WriteMacroFile(CurrentMacroName, CurrentRecordData)
-        CurrentMacroData = CurrentRecordData
+        local UnitsUsed = {}
+        for UnitPos, UnitData in pairs(CurrentUnits) do
+            if not table.find(UnitsUsed, UnitData["Name"]) then
+                table.insert(UnitsUsed, UnitData["Name"])
+            end
+        end
+        local FinalMacroData = {["UnitsData"] = UnitsUsed, ["Steps"] = CurrentRecordData}
+        local success = WriteMacroFile(CurrentMacroName, FinalMacroData)
+        CurrentMacroData = FinalMacroData
         CurrentRecordData = {}
         CurrentRecordStep = 1
         UpdateMacroDropdowns()
@@ -605,7 +647,6 @@ local on_namecall = function(obj, ...)
     local args = {...}
     local method = tostring(getnamecallmethod())
     local isRemoteMethod = method == "FireServer" or method == "InvokeServer"
-    
 
     if RecordingMacro then
         if method:match("Server") and isRemoteMethod then

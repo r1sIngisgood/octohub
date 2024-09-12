@@ -329,7 +329,6 @@ local function GetUnitGUIDFromPos(Pos: Vector3)
     for i, v in pairs(UnitsFolder:GetChildren()) do
         local vHRP = v:FindFirstChild("HumanoidRootPart")
         if not vHRP then return end
-        warn(vHRP.Position, Pos)
         if (vHRP.Position - Pos).Magnitude <= 2 or vHRP.Position == Pos then
             UnitGUID = v.Name
         end
@@ -350,7 +349,18 @@ local function PlaceUnit(UnitIDOrName: number|string, Pos: Vector3, Rotation: nu
     end
     local Payload = {UnitName, UnitID, Pos, Rotation}
 
-    return UnitEvent:FireServer("Render", Payload)
+    UnitEvent:FireServer("Render", Payload)
+    local UnitGUID 
+    UnitsFolder.ChildAdded:Wait(function(Unit)
+      local UnitHRP = Unit:WaitForChild("HumanoidRootPart")
+      local distancefrompos = (Unit.HumanoidRootPart.Position - Pos).Magnitude
+      if distancefrompos <= 5 or distancefrompos == 0 then
+        UnitGUID = Unit.Name
+      else
+        UnitGUID = "not found"
+      end
+    end)
+    return UnitGUID
 end
 
 local function SellUnit(UnitGUID: string)

@@ -36,10 +36,13 @@ local SkipWaveEvent = NetworkingFolder.SkipWaveEvent
 local UnitEvent = NetworkingFolder.UnitEvent
 local VoteEvent = NetworkingFolder.EndScreen.VoteEvent
 local ShowEndScreenEvent = NetworkingFolder.EndScreen.ShowEndScreenEvent
+local GameRestartedEvent = NetworkingFolder.ClientListeners.GameRestartedEvent
 
 local UnitsFolder = workspace.Units
 local StagesDataFolder = ReplicatedModulesFolder.Data.StagesData
 local StoryStages = StagesDataFolder.Story
+
+local LocalPlayer = Players.LocalPlayer
 
 --// Script Consts \\--
 local ScriptFilePath = "OctoHub"..[[/]].."Anime Vanguards"..[[/]]
@@ -51,6 +54,7 @@ local EmptyFunc = function() end
 local Options = getgenv().Options
 
 local Functions = {CreateMacro = EmptyFunc, DeleteMacro = EmptyFunc, ChooseMacro = EmptyFunc}
+local Connections = {}
 local Macros = {}
 local CurrentRecordStep = 1
 local CurrentRecordData = {}
@@ -97,6 +101,7 @@ local Tabs = {
 local FarmSettingsBox = Tabs.Main:AddLeftGroupbox("Farm Settings")
 local AutoRetryToggle = FarmSettingsBox:AddToggle("AutoRetryToggle", {Text = "Auto Retry", Default = false, Tooltip = "Auto press the retry button"})
 local AutoNextStoryToggle = FarmSettingsBox:AddToggle("AutoNextStoryToggle", {Text = "Auto Next Story", Default = false, Tooltip = "Auto press the next story button"})
+local AutoStartToggle = FarmSettingsBox:AddToggle("AutoStartToggle", {Text = "Auto Start Game", Default = true, Tooltip = "Auto votes for start at the start of a game"})
 
 local UISettingsBox = Tabs.UISettings:AddLeftGroupbox("UI Settings")
 local UnloadButton = UISettingsBox:AddButton("Unload", EmptyFunc)
@@ -154,7 +159,6 @@ local function UpdateMacroDropdowns()
         Dropdown.Values = Macros
         Dropdown:SetValues()
     end
-    writefile("Macros.json",HttpService:JSONEncode(MacroDropdowns))
 end
 
 local StageList = {}
@@ -215,6 +219,7 @@ end
 ConfigLoadButton.Func = LoadConfig
 
 getgenv().Octohub.Config = LoadConfig() or DefaultCFG
+writefile("r1singdebug.json", HttpService:JSONEncode(getgenv().Octohub.Config))
 for Name, Value in DefaultCFG do
     local CurrentCFGVal = getgenv().Octohub.Config[Name]
     if not CurrentCFGVal then
@@ -238,6 +243,10 @@ local function SaveConfig()
 end
 ConfigSaveButton.Func = SaveConfig
 UnloadButton.Func = function()
+    for _, Con in pairs(Connections) do
+        Con:Disconnect()
+    end
+
     SaveConfig()
     UILib:Unload()
 end
@@ -262,7 +271,7 @@ for DropdownName, DropdownValue in pairs(getgenv().Octohub.Config.MacroDropdowns
     getgenv().Options[DropdownName]:SetValue(DropdownValue)
 end
 for ToggleName, ToggleValue in pairs(getgenv().Octohub.Config.Toggles) do
-    local Toggle = getgenv().Options[ToggleName]
+    local Toggle = getgenv().Toggles[ToggleName]
     if not Toggle then continue end
     getgenv().Toggles[ToggleName]:SetValue(ToggleValue)
 end
@@ -280,7 +289,7 @@ local function NextCall()
     VoteEvent:FireServer("Next")
 end
 
-ShowEndScreenEvent.OnClientEvent:Connect(function(...)
+local RetryAndNextStoryCon = ShowEndScreenEvent.OnClientEvent:Connect(function(...)
     task.wait(5)
     local EndScreenData = ...
     if AutoNextStoryToggle.Value and EndScreenData["StageType"] == "Story" and EndScreenData["Status"] ~= "Failed" then
@@ -290,16 +299,34 @@ ShowEndScreenEvent.OnClientEvent:Connect(function(...)
     end
 end)
 
+local AutoMacroReplayCon = GameRestartedEvent.OnClientEvent:Connect(function(...)
+    if MacroPlayToggle.Value then
+        MacroPlayToggle:SetValue(false)
+        task.wait(0.3)
+        MacroPlayToggle:SetValue(true)
+    end
+    task.wait(5)
+    if AutoStartToggle.Value then
+        SkipWavesCall()
+    end
+end)
+
+table.insert(Connections, RetryAndNextStoryCon)
+table.insert(Connections, AutoMacroReplayCon)
+
 local function GetUnitIDFromName(UnitName: string)
     if not UnitName then return end
     return EntityIDHandler.GetIDFromName(nil, "Unit", UnitName)
 end
 
 local function GetPlacedUnitDataFromGUID(UnitGUID: string)
-    local AllPlacedUnits = UnitPlacementsHandler:GetAllPlacedUnits()
-    local PlacedUnitData = AllPlacedUnits[UnitGUID]
-    if not PlacedUnitData then warn(PlacedUnitData, AllPlacedUnits, AllPlacedUnits[UnitGUID], UnitGUID) end
-
+    local PlacedUnitData
+    local AllPlacedUnits
+    repeat task.wait(0.1)
+        AllPlacedUnits = UnitPlacementsHandler:GetAllPlacedUnits()
+        PlacedUnitData = AllPlacedUnits[UnitGUID]
+    until PlacedUnitData ~= nil
+    writefile("r1singdebug.json", HttpService:JSONEncode(AllPlacedUnits))
     return PlacedUnitData
 end
 
@@ -325,14 +352,18 @@ end
 
 local function GetUnitGUIDFromPos(Pos: Vector3)
     if not Pos then return end
-    local UnitGUID: string
-    for i, v in pairs(UnitsFolder:GetChildren()) do
-        local vHRP = v:FindFirstChild("HumanoidRootPart")
-        if not vHRP then return end
-        if (vHRP.Position - Pos).Magnitude <= 2 or vHRP.Position == Pos then
-            UnitGUID = v.Name
+    local UnitData
+    local repeatCount = 0
+    repeat task.wait(0.1)
+        for UnitPos, Data in pairs(CurrentUnits) do
+            if (UnitPos - Pos).Magnitude <= 2 or (Vector3.new(UnitPos.X, 0, UnitPos.Z) - Vector3.new(Pos.X, 0, Pos.Z)).Magnitude <= 2 then
+                UnitData = Data
+            end
         end
-    end
+        repeatCount += 1
+        warn(repeatCount)
+    until UnitData ~= nil
+    local UnitGUID = UnitData["GUID"]
     return UnitGUID
 end
 
@@ -350,17 +381,6 @@ local function PlaceUnit(UnitIDOrName: number|string, Pos: Vector3, Rotation: nu
     local Payload = {UnitName, UnitID, Pos, Rotation}
 
     UnitEvent:FireServer("Render", Payload)
-    local UnitGUID 
-    UnitsFolder.ChildAdded:Wait(function(Unit)
-        local UnitHRP = Unit:WaitForChild("HumanoidRootPart")
-        local distancefrompos = (Unit.HumanoidRootPart.Position - Pos).Magnitude
-        if distancefrompos <= 5 or distancefrompos == 0 then
-            UnitGUID = Unit.Name
-        else
-            UnitGUID = "not found"
-        end
-    end)
-    return UnitGUID
 end
 
 local function SellUnit(UnitGUID: string)
@@ -371,6 +391,52 @@ end
 local function UpgradeUnit(UnitGUID)
     if not UnitGUID then return end
     UnitEvent:FireServer("Upgrade", UnitGUID)
+end
+
+--// UNIT TRACKING \\--
+local function PlayerCheck(UnitObject) if UnitObject["Player"] == LocalPlayer then return true else return false end end
+
+local function UnitAdded(child)
+    local PlacedUnitData = GetPlacedUnitDataFromGUID(child.Name)
+    local PlacedUnitObject = PlacedUnitData["UnitObject"]
+    if not PlayerCheck(PlacedUnitObject) then return end
+    if PlacedUnitObject["Player"] == LocalPlayer then
+        CurrentUnits[PlacedUnitObject["Position"]] = {["Name"] = PlacedUnitObject["Name"], ["GUID"] = PlacedUnitObject["UniqueIdentifier"], ["Model"] = child, ["Position"] = PlacedUnitObject["Position"]}
+    end
+end
+
+local function UnitRemoved(child)
+    for Pos, UnitProps in pairs(CurrentUnits) do
+        if UnitProps["Model"] == child then
+            CurrentUnits[Pos] = nil
+        end
+    end
+end
+
+local UnitAddedCon = UnitsFolder.ChildAdded:Connect(UnitAdded)
+local UnitRemovedCon = UnitsFolder.ChildRemoved:Connect(UnitRemoved)
+table.insert(Connections, UnitAddedCon)
+table.insert(Connections, UnitRemovedCon)
+
+local function GetTrackedUnitDataFromGUID(UnitGUID: string)
+    local UnitData
+    for UnitPos, Unit in pairs(CurrentUnits) do
+        if Unit["GUID"] == UnitGUID then
+            UnitData = Unit
+        end
+    end
+    return UnitData
+end
+
+local function GetActualDataForTrackedUnit(UnitIdentifier: string | Vector3)
+    local TrackedData
+    if typeof(UnitIdentifier) == 'string' then
+        TrackedData = GetTrackedUnitDataFromGUID(UnitIdentifier)
+    elseif typeof(UnitIdentifier) == 'Vector3' then
+        TrackedData = CurrentUnits[UnitIdentifier]
+    end
+
+    return GetPlacedUnitDataFromGUID(TrackedData["GUID"])
 end
 
 --// MACRO FILES MANIPULATIONS \\--
@@ -443,7 +509,7 @@ local function PlayMacro()
         local totalSteps = #CurrentMacroData
         for stepCount, stepData in pairs(CurrentMacroData) do
             if not MacroPlaying then break end
-            task.wait(0.25)
+            task.wait(0.5)
             local CurrentYen = PlayerYenHandler:GetYen()
 
             local stepName = stepData[1]
@@ -460,15 +526,6 @@ local function PlayMacro()
                     repeat task.wait() if not MacroPlaying then return end until PlayerYenHandler:GetYen() >= UnitData["Price"]
                 end
                 PlaceUnit(UnitID, UnitPos, UnitRotation)
-                workspace.Units.ChildAdded:Wait(function(child)
-                    local PlacedUnitData = GetPlacedUnitDataFromGUID(child.Name)
-                    writefile("r1singdebug.json", HttpService:JSONEncode(PlacedUnitData))
-                    if PlacedUnitData["UnitObject"]["Name"] == UnitName then
-                        local UnitGUID = PlacedUnitData["UnitObject"]["UniqueIdentifier"]
-                        CurrentUnits[UnitPos] = {["UnitName"] = UnitName, ["PlacementPos"] = UnitPos}
-                    end
-                end)
-           
             elseif stepName == "Sell" then
                 MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Selling a unit")
                 local UnitPos = string_to_vector3(stepData[2])
@@ -478,14 +535,9 @@ local function PlayMacro()
             elseif stepName == "Upgrade" then
                 local UnitPos = string_to_vector3(stepData[2])
                 
-                local UnitGUID
-                local PlacedUnitData
-                repeat
-                    warn(UnitPos, UnitGUID, PlacedUnitData)
-                    UnitGUID = GetUnitGUIDFromPos(UnitPos)
-                    PlacedUnitData = GetPlacedUnitDataFromGUID(UnitGUID)
-                    task.wait(0.1)
-                until PlacedUnitData ~= nil and UnitGUID ~= nil
+                warn(stepName)
+                local UnitGUID = GetUnitGUIDFromPos(UnitPos)
+                local PlacedUnitData = GetPlacedUnitDataFromGUID(UnitGUID)
 
                 local UpgradeLevel = PlacedUnitData["UpgradeLevel"]
                 local UpgradePrice = PlacedUnitData["UnitObject"]["Data"]["Upgrades"][UpgradeLevel+1]["Price"]
@@ -544,6 +596,8 @@ local on_namecall = function(obj, ...)
     local args = {...}
     local method = tostring(getnamecallmethod())
     local isRemoteMethod = method == "FireServer" or method == "InvokeServer"
+    
+
     if RecordingMacro then
         if method:match("Server") and isRemoteMethod then
             if obj == UnitEvent then
@@ -557,16 +611,14 @@ local on_namecall = function(obj, ...)
                     CurrentRecordData[CurrentRecordStep] = {"Place", UnitName, UnitID, tostring(UnitPos), UnitRotation}
                 elseif args[1] == "Sell" then
                     local UnitGUID = args[2]
-                    local UnitModel = GetUnitModelFromGUID(UnitGUID)
-                    local UnitPos = UnitModel.HumanoidRootPart.Position
+                    local PlacedUnitData = GetTrackedUnitDataFromGUID(UnitGUID)
 
-                    CurrentRecordData[CurrentRecordStep] = {"Sell", tostring(UnitPos)}
+                    CurrentRecordData[CurrentRecordStep] = {"Sell", tostring(PlacedUnitData["Position"])}
                 elseif args[1] == "Upgrade" then
                     local UnitGUID = args[2]
-                    local UnitModel = GetUnitModelFromGUID(UnitGUID)
-                    local UnitPos = UnitModel.HumanoidRootPart.Position
+                    local PlacedUnitData = GetTrackedUnitDataFromGUID(UnitGUID)
 
-                    CurrentRecordData[CurrentRecordStep] = {"Upgrade", tostring(UnitPos)}
+                    CurrentRecordData[CurrentRecordStep] = {"Upgrade", tostring(PlacedUnitData["Position"])}
                 end
                 CurrentRecordStep += 1
             end
@@ -576,3 +628,8 @@ local on_namecall = function(obj, ...)
     return gameNamecall(obj, ...)
 end
 gameMeta.__namecall = on_namecall
+
+if AutoStartToggle.Value then
+    task.wait(5)
+    SkipWavesCall()
+end

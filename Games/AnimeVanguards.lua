@@ -352,13 +352,13 @@ local function PlaceUnit(UnitIDOrName: number|string, Pos: Vector3, Rotation: nu
     UnitEvent:FireServer("Render", Payload)
     local UnitGUID 
     UnitsFolder.ChildAdded:Wait(function(Unit)
-      local UnitHRP = Unit:WaitForChild("HumanoidRootPart")
-      local distancefrompos = (Unit.HumanoidRootPart.Position - Pos).Magnitude
-      if distancefrompos <= 5 or distancefrompos == 0 then
-        UnitGUID = Unit.Name
-      else
-        UnitGUID = "not found"
-      end
+        local UnitHRP = Unit:WaitForChild("HumanoidRootPart")
+        local distancefrompos = (Unit.HumanoidRootPart.Position - Pos).Magnitude
+        if distancefrompos <= 5 or distancefrompos == 0 then
+            UnitGUID = Unit.Name
+        else
+            UnitGUID = "not found"
+        end
     end)
     return UnitGUID
 end
@@ -453,14 +453,22 @@ local function PlayMacro()
                 MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Placing "..UnitName)
                 local UnitPos = string_to_vector3(stepData[4])
                 local UnitID = stepData[3]
-                
+             
                 local UnitRotation = stepData[5]
                 if UnitData["Price"] > CurrentYen then
                     MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Placing "..UnitName..", waiting for "..tostring(UnitData["Price"]))
                     repeat task.wait() if not MacroPlaying then return end until PlayerYenHandler:GetYen() >= UnitData["Price"]
                 end
-                warn(PlaceUnit(UnitID, UnitPos, UnitRotation))
-                --CurrentUnits[UnitPos] = UnitName
+                PlaceUnit(UnitID, UnitPos, UnitRotation)
+                workspace.Units.ChildAdded:Wait(function(child)
+                    local PlacedUnitData = GetPlacedUnitDataFromGUID(child.Name)
+                    writefile("r1singdebug.json", HttpService:JSONEncode(PlacedUnitData))
+                    if PlacedUnitData["UnitObject"]["Name"] == UnitName then
+                        local UnitGUID = PlacedUnitData["UnitObject"]["UniqueIdentifier"]
+                        CurrentUnits[UnitPos] = {["UnitName"] = UnitName, ["PlacementPos"] = UnitPos}
+                    end
+                end)
+           
             elseif stepName == "Sell" then
                 MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Selling a unit")
                 local UnitPos = string_to_vector3(stepData[2])

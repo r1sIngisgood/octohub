@@ -162,12 +162,15 @@ local function UpdateMacroDropdowns()
 end
 
 local StageList = {}
+local StageNumToName = {}
 
 local MacroMaps = {}
 for _, StoryFolder in pairs(StoryStages:GetChildren()) do
+    local StageModuleObject = StoryFolder[StoryFolder.Name]
     local StageModule = require(StoryFolder[StoryFolder.Name])
     local StageName = StageModule["Name"]
 
+    StageNumToName[StageModuleObject.Name] = StageName
     table.insert(StageList, StageName)
     MacroMaps[StageName] = {}
 end
@@ -263,13 +266,30 @@ for StageName, StageMacros in pairs(MacroMaps) do
     if curMacroList then
         MacroMaps[StageName] = curMacroList
     end
+    if StageName == GameHandler["GameData"]["Stage"] then
+        local MacroName = MacroMaps[StageName][GameHandler["GameData"]["StageType"]]
+    end
 end
+local CurrentMacroDecide = nil
 for DropdownName, DropdownValue in pairs(getgenv().Octohub.Config.MacroDropdowns) do
     if table.find(ConfigBlacklistNames, DropdownName) then return end
     local Dropdown = getgenv().Options[DropdownName]
     if not Dropdown then continue end
+    if DropdownName == "CurrentMacroDropdown" then
+        CurrentMacroDecide = DropdownValue
+        continue
+    end
     getgenv().Options[DropdownName]:SetValue(DropdownValue)
 end
+for StageName, StageMacros in pairs(MacroMaps) do
+    print(StageNumToName[GameHandler["GameData"]["Stage"]])
+    if StageName == StageNumToName[GameHandler["GameData"]["Stage"]] then
+        local MacroName = MacroMaps[StageName][GameHandler["GameData"]["StageType"]]
+        CurrentMacroDecide = MacroName
+        print(MacroName)
+    end
+end
+getgenv().Options["CurrentMacroDropdown"]:SetValue(CurrentMacroDecide)
 for ToggleName, ToggleValue in pairs(getgenv().Octohub.Config.Toggles) do
     local Toggle = getgenv().Toggles[ToggleName]
     if not Toggle then continue end
@@ -426,17 +446,6 @@ local function GetTrackedUnitDataFromGUID(UnitGUID: string)
         end
     end
     return UnitData
-end
-
-local function GetActualDataForTrackedUnit(UnitIdentifier: string | Vector3)
-    local TrackedData
-    if typeof(UnitIdentifier) == 'string' then
-        TrackedData = GetTrackedUnitDataFromGUID(UnitIdentifier)
-    elseif typeof(UnitIdentifier) == 'Vector3' then
-        TrackedData = CurrentUnits[UnitIdentifier]
-    end
-
-    return GetPlacedUnitDataFromGUID(TrackedData["GUID"])
 end
 
 --// MACRO FILES MANIPULATIONS \\--

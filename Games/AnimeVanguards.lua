@@ -362,7 +362,7 @@ local function GetPlacedUnitDataFromGUID(UnitGUID: string)
     local PlacedUnitData
     local AllPlacedUnits
     repeat task.wait(0.1)
-        if UILib.Unloaded or not MacroPlaying then return end
+        if UILib.Unloaded then return end
         AllPlacedUnits = UnitPlacementsHandler:GetAllPlacedUnits()
         PlacedUnitData = AllPlacedUnits[UnitGUID]
     until PlacedUnitData ~= nil

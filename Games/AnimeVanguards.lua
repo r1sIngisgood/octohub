@@ -584,6 +584,10 @@ local function PlayMacro()
                 local PlacedUnitData = GetPlacedUnitDataFromGUID(UnitGUID)
 
                 local UpgradeLevel = PlacedUnitData["UpgradeLevel"]
+                local UpgradeStats = PlacedUnitData["UnitObject"]["Data"]["Upgrades"][UpgradeLevel+1]
+                if not UpgradeStats then
+                     continue
+                end
                 local UpgradePrice = PlacedUnitData["UnitObject"]["Data"]["Upgrades"][UpgradeLevel+1]["Price"]
                 local UnitName = PlacedUnitData["UnitObject"]["Name"]
                 MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Upgrading "..UnitName)

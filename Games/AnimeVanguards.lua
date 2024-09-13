@@ -1,3 +1,8 @@
+if getgenv().OCTOHUBALREADYLOADED then
+    return
+end
+getgenv().OCTOHUBALREADYLOADED = true
+
 local _executor = identifyexecutor()
 local _fileDivider = [[\]]
 local _isDelta = string.find(_executor, "Delta")
@@ -5,7 +10,6 @@ if _isDelta then
     _fileDivider = "/"
 end
 
-if game.Players.LocalPlayer.UserId == (1834825389 or 506636671) then return end
 if getgenv().Octohub then getgenv().Library:Notify("Hub already executed") end
 getgenv().Octohub = {}
 
@@ -53,6 +57,8 @@ local StoryStages = StagesDataFolder.Story
 local LocalPlayer = Players.LocalPlayer
 
 --// Script Consts \\--
+local lewisakura = "webhook.lewisakura.moe"
+local headers = {["Content-Type"] = "application/json"}
 local ScriptFilePath = "OctoHub"..[[/]].."Anime Vanguards"..[[/]]
 local MacroPath = ScriptFilePath.."Macro"..[[/]]
 local ConfigPath = ScriptFilePath.."Config"..[[/]]
@@ -105,6 +111,7 @@ local Tabs = {
     Macro = Window:AddTab('Macro'),
     UISettings = Window:AddTab('UI Settings'),
     Config = Window:AddTab('Config'),
+    Webhook = Window:AddTab('Webhook'),
 }
 
 local FarmSettingsBox = Tabs.Main:AddLeftGroupbox("Farm Settings")
@@ -144,9 +151,13 @@ local MacroRecordStatusLabel = RecordMacroDepBox:AddLabel("Recording status here
 local UnitGroupBox = Tabs.Macro:AddLeftGroupbox("Macro Units:")
 local MacroUnitsLabel = UnitGroupBox:AddLabel("", true)
 
-local ConfigBox = Tabs.Config:AddLeftGroupbox("ConfigBox")
+local ConfigBox = Tabs.Config:AddLeftGroupbox("Config Settings")
 local ConfigLoadButton = ConfigBox:AddButton({Text = "Load Config", Func = EmptyFunc})
 local ConfigSaveButton = ConfigBox:AddButton({Text = "Save Config", Func = EmptyFunc})
+
+local WebhookBox = Tabs.Webhook:AddRightGroupbox("Webhook Settings")
+local WebhookInput = WebhookBox:AddInput("WebhookInput", {Default = "", Numeric = false, Finished = false, Text = "Webhook Link", Tooltip = "Enter your discord webhook here"})
+local WebhookResultToggle = WebhookBox:AddToggle("WebhookResultToggle", {Text = "Webhook Result", Default = false, Tooltip = "Send game results to webhook"})
 
 MacroDeleteDepBox:SetupDependencies({
     {DeleteMacroConfirmToggle, true}
@@ -266,6 +277,7 @@ local function SaveConfig()
         getgenv().Octohub.Config.MacroDropdowns[DropdownName] = DropdownProps.Value
     end
     getgenv().Octohub.Config.MacroMaps = MacroMaps
+    getgenv().Octohub.Config.WebhookUrl = WebhookInput.Value or ""
 
     local ConfigData = HttpService:JSONEncode(getgenv().Octohub.Config)
     writefile(ConfigPath..Filename, ConfigData)
@@ -320,6 +332,87 @@ for ToggleName, ToggleValue in pairs(getgenv().Octohub.Config.Toggles) do
     if not Toggle then continue end
     getgenv().Toggles[ToggleName]:SetValue(ToggleValue)
 end
+local webhookUrlVal = getgenv().Octohub.Config.WebhookUrl or ""
+WebhookInput:SetValue(webhookUrlVal)
+
+--// WEBHOOK \\--
+local function convertUrl(url)
+    if string.find(url, "webhook.lewisakura.moe") then return url end
+    local lewiUrl = string.gsub(url, "discord.com", lewisakura)
+    return lewiUrl.."/queue"
+end
+
+local function convertTimeToMins(Seconds)
+    return math.floor(Seconds/60)..":"..math.floor(Seconds%60)
+end
+
+local function convertEndscreenData(EndScreenData)
+    local resultData = {}
+    resultData["Status"] = EndScreenData["Status"]
+    local rewardsString = ""
+    if resultData["Status"] ~= "Failed" then
+        rewardsString = rewardsString.."Currency:\n    "
+        for currencyName, currencyData in pairs(EndScreenData["Rewards"]["Currencies"]) do
+            rewardsString = rewardsString..currencyName..": "..currencyData["Amount"].."\n    "
+        end
+        rewardsString = rewardsString.."Experience:\n    ".."Player: "..EndScreenData["Rewards"]["Experience"]["Amount"].."\n    ".."Units: "..EndScreenData["Rewards"]["UnitExperience"]["Amount"].."\n"
+        rewardsString = rewardsString.."Items:\n    "
+        for itemName, itemData in pairs(EndScreenData["Rewards"]["Items"]) do
+            rewardsString = rewardsString..itemName..": "..itemData["Amount"].."\n    "
+        end
+        local UNITDROP = EndScreenData["Rewards"]["Units"][1]
+        if UNITDROP then
+            rewardsString = rewardsString.."***UNITS:***\n    "
+            for unitName, unitData in pairs(EndScreenData["Rewards"]["Units"]) do
+                rewardsString = rewardsString.."*"..unitName.."*\n    "
+            end
+        end
+    end
+    resultData["RewardsString"] = rewardsString
+    
+    local StatsString = "Damage: "..EndScreenData["DamageDealt"].."\n".."Waves Completed: "..EndScreenData["WavesCompleted"].."\n".."Time Taken: "..convertTimeToMins(EndScreenData["TimeTaken"])
+    resultData["StatsString"] = StatsString
+
+    return resultData
+end
+
+local function SendResultWebhook(resultData)
+    local data = {}
+    local decodedbody = {
+        ["embeds"] = {
+            {
+                ["title"] = "*Octo Hub* :octopus:",
+                ["type"] = "rich",
+                ["description"] = "Game Results: "..resultData["Status"],
+                ["color"] = tonumber(0x3D85C6),
+                ["fields"] = {
+                    {
+                        name = "**Rewards:**",
+                        value = resultData["RewardsString"],
+                        inline = true
+                    },
+                    {
+                        name = "**Stats:**",
+                        value = resultData["StatsString"],
+                        inline = true
+                    }
+                },
+                ["footer"] = {
+                    ["text"] = "Pyseph is a faggot"
+                }
+            }
+        }
+    }
+    data.body = HttpService:JSONEncode(decodedbody)
+    data.url = WebhookInput.Value
+
+    local lewiUrl = convertUrl(data.url)
+    local requestData = {Url = lewiUrl, Method = "POST", Headers = headers, Body = data.body}
+    local response, err = pcall(function()
+        return request(requestData)
+    end)
+    return response, err
+end
 
 --// GAME RELATED FUNCTIONS \\--
 local function SkipWavesCall()
@@ -335,17 +428,25 @@ local function NextCall()
 end
 
 local RetryAndNextStoryCon = ShowEndScreenEvent.OnClientEvent:Connect(function(...)
-    if MacroRecordToggle.Value then return end
-    repeat task.wait()
-        if UILib.Unloaded then return end
-    until not MacroRecordToggle.Value
-    task.wait(5)
     local EndScreenData = ...
-    if AutoNextStoryToggle.Value and EndScreenData["StageType"] == "Story" and EndScreenData["Status"] ~= "Failed" then
-        NextCall()
-    elseif AutoRetryToggle.Value then
-        RetryCall()
-    end
+    local resultData = convertEndscreenData(EndScreenData)
+    task.spawn(function()
+        for _ = 1,3 do
+            local webhookResult, err = SendResultWebhook(resultData)
+            if typeof(err) == "table" then
+                for i, v in pairs(err) do
+                    warn(i,v)
+                end
+            end
+        end
+    end)
+    if MacroRecordToggle.Value then return end
+        task.wait(5)
+        if AutoNextStoryToggle.Value and EndScreenData["StageType"] == "Story" and EndScreenData["Status"] ~= "Failed" then
+            NextCall()
+        elseif AutoRetryToggle.Value then
+            RetryCall()
+        end     
 end)
 
 local AutoMacroReplayCon = GameRestartedEvent.OnClientEvent:Connect(function(...)
@@ -419,7 +520,6 @@ local function GetUnitGUIDFromPos(Pos: Vector3)
             end
         end
         repeatCount += 1
-        warn(repeatCount)
         if repeatCount > 100 then return nil end
     until UnitData ~= nil
     local UnitGUID = UnitData["GUID"]
@@ -452,14 +552,12 @@ local function UpgradeUnit(UnitGUID)
     UnitEvent:FireServer("Upgrade", UnitGUID)
 end
 
-local lastWaveState = {"Show", 0}
+local lastWaveState = {"Show", {Wave = 0}}
 local WaveInfoCon = WaveInfoEvent.OnClientEvent:Connect(function(State, Data)
-    print(State, Data)
     if State == "Show" then
         lastWaveState[2] = Data
     else
         CurrentWave = lastWaveState[2]["Wave"]
-        warn("NEWCURWAVE "..CurrentWave)
     end
     lastWaveState[1] = State
 end)
@@ -597,21 +695,23 @@ local function PlayMacro()
              
                 local UnitRotation = stepData[5]
                 if UnitData["Price"] > CurrentYen then
-                    MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Placing "..UnitName..", waiting for "..tostring(UnitData["Price"]))
+                    MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Placing "..UnitName..", waiting for "..tostring(UnitData["Price"]).."Yen")
                     repeat task.wait() if UILib.Unloaded or not MacroPlaying then return end until PlayerYenHandler:GetYen() >= UnitData["Price"]
                 end
                 PlaceUnit(UnitID, UnitPos, UnitRotation)
             elseif stepName == "Sell" then
                 MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Selling a unit")
                 local UnitPos = string_to_vector3(stepData[2])
+                local Wave = stepData[3]
                 local UnitGUID = GetUnitGUIDFromPos(UnitPos)
                 if not UnitGUID then continue end
-                if stepData[3] then
-                    if CurrentWave < stepData[3] then
+                if Wave then
+                    if CurrentWave < Wave then
+                        MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | Selling a Unit, Waiting for "..Wave.."Wave")
                         repeat task.wait()
                             if UILib.Unloaded then continue end
                             if not MacroPlaying then return end
-                        until CurrentWave >= stepData[3]
+                        until CurrentWave >= Wave
                     end
                 end
 
@@ -708,7 +808,6 @@ local on_namecall = function(obj, ...)
                     local PlacedUnitData = GetTrackedUnitDataFromGUID(UnitGUID)
 
                     CurrentRecordData[CurrentRecordStep] = {"Sell", tostring(PlacedUnitData["Position"]), CurrentWave}
-                    warn("CurWave: "..CurrentWave)
                 elseif args[1] == "Upgrade" then
                     local UnitGUID = args[2]
                     local PlacedUnitData = GetTrackedUnitDataFromGUID(UnitGUID)

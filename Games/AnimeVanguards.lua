@@ -1,5 +1,12 @@
-if game.Players.LocalPlayer.UserId == (1834825389 or 506636671) then return end
+local _executor = identifyexecutor()
+local _fileDivider = [[\]]
+local _isDelta = string.find(_executor, "Delta")
+if _isDelta then
+    _fileDivider = "/"
+end
 
+if game.Players.LocalPlayer.UserId == (1834825389 or 506636671) then return end
+if getgenv().Octohub then getgenv().Library:Notify("Hub already executed") end
 getgenv().Octohub = {}
 
 if not isfolder("OctoHub") then makefolder("OctoHub") end
@@ -37,6 +44,7 @@ local UnitEvent = NetworkingFolder.UnitEvent
 local VoteEvent = NetworkingFolder.EndScreen.VoteEvent
 local ShowEndScreenEvent = NetworkingFolder.EndScreen.ShowEndScreenEvent
 local GameRestartedEvent = NetworkingFolder.ClientListeners.GameRestartedEvent
+local WaveInfoEvent = NetworkingFolder.WaveInfoEvent
 
 local UnitsFolder = workspace.Units
 local StagesDataFolder = ReplicatedModulesFolder.Data.StagesData
@@ -59,6 +67,7 @@ local Macros = {}
 local CurrentRecordStep = 1
 local CurrentRecordData = {}
 local CurrentUnits = {}
+local CurrentWave = 0
 
 local CurrentMacroName = nil
 local CurrentMacroData = nil
@@ -113,6 +122,7 @@ local MacroStageDropdown = MacroStageBox:AddDropdown("StageDropdown", {Values = 
 local MacroStageStoryDropdown = MacroStageBox:AddDropdown("MacroStageStoryDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Story"})
 local MacroStageInfDropdown = MacroStageBox:AddDropdown("MacroStageInfDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Infinite"})
 local MacroStageParagonDropdown = MacroStageBox:AddDropdown("MacroStageParagonDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Paragon"})
+local MacroStageLegendDropdown = MacroStageBox:AddDropdown("MacroStageLegendDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Legend"})
 
 local CurrentMacroDropdown = MacroSettingsBox:AddDropdown("CurrentMacroDropdown", {Values = {}, AllowNull = true, Multi = false, Text = "Current Macro", Tooltip = "Choose a macro here", Callback = Functions.ChooseMacro})
 local MacroPlayToggle = MacroSettingsBox:AddToggle("MacroPlayToggle", {Text = "Play Macro", Default = false, Tooltip = "Play Selected Macro"})
@@ -158,8 +168,8 @@ HideShowButton.Activated:Connect(function()
     task.spawn(UILib.Toggle)
 end)
 
-local MacroDropdowns = {["CurrentMacroDropdown"] = CurrentMacroDropdown, ["MacroStageInfDropdown"] = MacroStageInfDropdown, ["MacroStageParagonDropdown"] = MacroStageParagonDropdown, ["MacroStageStoryDropdown"] = MacroStageStoryDropdown}
-local idxtoact = {["MacroStageStoryDropdown"] = "Story", ["MacroStageInfDropdown"] = "Infinite", ["MacroStageParagonDropdown"] = "Paragon"}
+local MacroDropdowns = {["CurrentMacroDropdown"] = CurrentMacroDropdown, ["MacroStageInfDropdown"] = MacroStageInfDropdown, ["MacroStageParagonDropdown"] = MacroStageParagonDropdown, ["MacroStageStoryDropdown"] = MacroStageStoryDropdown, ["MacroStageLegendDropdown"] = MacroStageLegendDropdown}
+local idxtoact = {["MacroStageStoryDropdown"] = "Story", ["MacroStageInfDropdown"] = "Infinite", ["MacroStageParagonDropdown"] = "Paragon", ["MacroStageLegendDropdown"] = "LegendStage"}
 
 local function UpdateMacroDropdowns()
     Macros = {}
@@ -259,6 +269,7 @@ local function SaveConfig()
 
     local ConfigData = HttpService:JSONEncode(getgenv().Octohub.Config)
     writefile(ConfigPath..Filename, ConfigData)
+    return true
 end
 ConfigSaveButton.Func = SaveConfig
 UnloadButton.Func = function()
@@ -268,8 +279,9 @@ UnloadButton.Func = function()
 
     randomScreenGui:Destroy()
     
-    SaveConfig()
+    local a = SaveConfig()
     UILib:Unload()
+    getgenv().Octohub = nil
 end
 
 Players.PlayerRemoving:Connect(function(plr)
@@ -283,9 +295,6 @@ for StageName, StageMacros in pairs(MacroMaps) do
     local curMacroList = getgenv().Octohub.Config.MacroMaps[StageName]
     if curMacroList then
         MacroMaps[StageName] = curMacroList
-    end
-    if StageName == GameHandler["GameData"]["Stage"] then
-        local MacroName = MacroMaps[StageName][GameHandler["GameData"]["StageType"]]
     end
 end
 local CurrentMacroDecide = nil
@@ -327,6 +336,9 @@ end
 
 local RetryAndNextStoryCon = ShowEndScreenEvent.OnClientEvent:Connect(function(...)
     if MacroRecordToggle.Value then return end
+    repeat task.wait()
+        if UILib.Unloaded then return end
+    until not MacroRecordToggle.Value
     task.wait(5)
     local EndScreenData = ...
     if AutoNextStoryToggle.Value and EndScreenData["StageType"] == "Story" and EndScreenData["Status"] ~= "Failed" then
@@ -337,6 +349,7 @@ local RetryAndNextStoryCon = ShowEndScreenEvent.OnClientEvent:Connect(function(.
 end)
 
 local AutoMacroReplayCon = GameRestartedEvent.OnClientEvent:Connect(function(...)
+    CurrentWave = 1
     if MacroPlayToggle.Value and not MacroRecordToggle.Value then
         MacroPlayToggle:SetValue(false)
         task.wait(0.3)
@@ -373,6 +386,9 @@ end
 
 local function GetUnitDataFromID(UnitID: number)
     if not UnitID then return end
+    if string.find(":Evolved") then
+        UnitID = string.gsub(UnitID,":Evolved","")
+    end
     return UnitsModule.GetUnitDataFromID(nil, UnitID, true)
 end
 
@@ -404,6 +420,7 @@ local function GetUnitGUIDFromPos(Pos: Vector3)
         end
         repeatCount += 1
         warn(repeatCount)
+        if repeatCount > 100 then return nil end
     until UnitData ~= nil
     local UnitGUID = UnitData["GUID"]
     return UnitGUID
@@ -434,6 +451,19 @@ local function UpgradeUnit(UnitGUID)
     if not UnitGUID then return end
     UnitEvent:FireServer("Upgrade", UnitGUID)
 end
+
+local lastWaveState = {"Show", 0}
+local WaveInfoCon = WaveInfoEvent.OnClientEvent:Connect(function(State, Data)
+    print(State, Data)
+    if State == "Show" then
+        lastWaveState[2] = Data
+    else
+        CurrentWave = lastWaveState[2]["Wave"]
+        warn("NEWCURWAVE "..CurrentWave)
+    end
+    lastWaveState[1] = State
+end)
+table.insert(Connections, WaveInfoCon)
 
 --// UNIT TRACKING \\--
 local function PlayerCheck(UnitObject) if UnitObject["Player"] == LocalPlayer then return true else return false end end
@@ -547,7 +577,6 @@ UpdateMacroDropdowns()
 --// MACRO PLAY \\--
 local function PlayMacro()
     if (not CurrentMacroName or not CurrentRecordData) and MacroPlaying then Notify("Invalid macro") return end
-    
     MacroPlaying = MacroPlayToggle.Value
     if MacroPlaying then
         if not CurrentMacroData then return end
@@ -576,12 +605,22 @@ local function PlayMacro()
                 MacroStatusLabel:SetText(stepCount.."/"..totalSteps.." | ".."Selling a unit")
                 local UnitPos = string_to_vector3(stepData[2])
                 local UnitGUID = GetUnitGUIDFromPos(UnitPos)
+                if not UnitGUID then continue end
+                if stepData[3] then
+                    if CurrentWave < stepData[3] then
+                        repeat task.wait()
+                            if UILib.Unloaded then continue end
+                            if not MacroPlaying then return end
+                        until CurrentWave >= stepData[3]
+                    end
+                end
 
                 SellUnit(UnitGUID)
             elseif stepName == "Upgrade" then
                 local UnitPos = string_to_vector3(stepData[2])
                 
                 local UnitGUID = GetUnitGUIDFromPos(UnitPos)
+                if not UnitGUID then continue end
                 local PlacedUnitData = GetPlacedUnitDataFromGUID(UnitGUID)
 
                 local UpgradeLevel = PlacedUnitData["UpgradeLevel"]
@@ -668,7 +707,8 @@ local on_namecall = function(obj, ...)
                     local UnitGUID = args[2]
                     local PlacedUnitData = GetTrackedUnitDataFromGUID(UnitGUID)
 
-                    CurrentRecordData[CurrentRecordStep] = {"Sell", tostring(PlacedUnitData["Position"])}
+                    CurrentRecordData[CurrentRecordStep] = {"Sell", tostring(PlacedUnitData["Position"]), CurrentWave}
+                    warn("CurWave: "..CurrentWave)
                 elseif args[1] == "Upgrade" then
                     local UnitGUID = args[2]
                     local PlacedUnitData = GetTrackedUnitDataFromGUID(UnitGUID)

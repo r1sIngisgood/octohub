@@ -386,7 +386,7 @@ end
 
 local function GetUnitDataFromID(UnitID: number)
     if not UnitID then return end
-    if string.find(":Evolved") then
+    if string.find(UnitID,":Evolved") then
         UnitID = string.gsub(UnitID,":Evolved","")
     end
     return UnitsModule.GetUnitDataFromID(nil, UnitID, true)

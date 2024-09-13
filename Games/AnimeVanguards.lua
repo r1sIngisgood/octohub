@@ -1,7 +1,7 @@
-if getgenv().OCTOHUBALREADYLOADED then
+if _G.OCTOHUBALREADYLOADED then
     return
 end
-getgenv().OCTOHUBALREADYLOADED = true
+_G.OCTOHUBALREADYLOADED = true
 
 local _executor = identifyexecutor()
 local _fileDivider = [[\]]
@@ -9,9 +9,9 @@ local _isDelta = string.find(_executor, "Delta")
 if _isDelta then
     _fileDivider = "/"
 end
-
-if getgenv().Octohub then getgenv().Library:Notify("Hub already executed") end
-getgenv().Octohub = {}
+ 
+if _G.Octohub then _G.Library:Notify("Hub already executed") end
+_G.Octohub = {}
 
 if not isfolder("OctoHub") then makefolder("OctoHub") end
 if not isfolder("OctoHub"..[[/]].."Anime Vanguards") then makefolder("OctoHub"..[[/]].."Anime Vanguards") end
@@ -65,7 +65,7 @@ local ConfigPath = ScriptFilePath.."Config"..[[/]]
 local EmptyFunc = function() end
 
 --// Script Runtime Values \\--
-local Options = getgenv().Options
+local Options = _G.Options
 
 local Functions = {CreateMacro = EmptyFunc, DeleteMacro = EmptyFunc, ChooseMacro = EmptyFunc}
 local Connections = {}
@@ -258,28 +258,28 @@ local function LoadConfig()
 end
 ConfigLoadButton.Func = LoadConfig
 
-getgenv().Octohub.Config = LoadConfig() or DefaultCFG
-writefile("r1singdebug.json", HttpService:JSONEncode(getgenv().Octohub.Config))
+_G.Octohub.Config = LoadConfig() or DefaultCFG
+writefile("r1singdebug.json", HttpService:JSONEncode(_G.Octohub.Config))
 for Name, Value in DefaultCFG do
-    local CurrentCFGVal = getgenv().Octohub.Config[Name]
+    local CurrentCFGVal = _G.Octohub.Config[Name]
     if not CurrentCFGVal then
-        getgenv().Octohub.Config[Name] = Value
+        _G.Octohub.Config[Name] = Value
     end
 end
 
 local function SaveConfig()
-    for ToggleName, ToggleProps in pairs(getgenv().Toggles) do
+    for ToggleName, ToggleProps in pairs(_G.Toggles) do
         if table.find(ConfigBlacklistNames, ToggleName) then continue end
-        getgenv().Octohub.Config.Toggles[ToggleName] = ToggleProps.Value
+        _G.Octohub.Config.Toggles[ToggleName] = ToggleProps.Value
     end
     for DropdownName, DropdownProps in pairs(MacroDropdowns) do
         if table.find(ConfigBlacklistNames, DropdownName) then continue end
-        getgenv().Octohub.Config.MacroDropdowns[DropdownName] = DropdownProps.Value
+        _G.Octohub.Config.MacroDropdowns[DropdownName] = DropdownProps.Value
     end
-    getgenv().Octohub.Config.MacroMaps = MacroMaps
-    getgenv().Octohub.Config.WebhookUrl = WebhookInput.Value or ""
+    _G.Octohub.Config.MacroMaps = MacroMaps
+    _G.Octohub.Config.WebhookUrl = WebhookInput.Value or ""
 
-    local ConfigData = HttpService:JSONEncode(getgenv().Octohub.Config)
+    local ConfigData = HttpService:JSONEncode(_G.Octohub.Config)
     writefile(ConfigPath..Filename, ConfigData)
     return true
 end
@@ -293,7 +293,7 @@ UnloadButton.Func = function()
     
     local a = SaveConfig()
     UILib:Unload()
-    getgenv().Octohub = nil
+    _G.Octohub = nil
 end
 
 Players.PlayerRemoving:Connect(function(plr)
@@ -304,21 +304,21 @@ end)
 
 task.wait(0.5)
 for StageName, StageMacros in pairs(MacroMaps) do
-    local curMacroList = getgenv().Octohub.Config.MacroMaps[StageName]
+    local curMacroList = _G.Octohub.Config.MacroMaps[StageName]
     if curMacroList then
         MacroMaps[StageName] = curMacroList
     end
 end
 local CurrentMacroDecide = nil
-for DropdownName, DropdownValue in pairs(getgenv().Octohub.Config.MacroDropdowns) do
+for DropdownName, DropdownValue in pairs(_G.Octohub.Config.MacroDropdowns) do
     if table.find(ConfigBlacklistNames, DropdownName) then return end
-    local Dropdown = getgenv().Options[DropdownName]
+    local Dropdown = _G.Options[DropdownName]
     if not Dropdown then continue end
     if DropdownName == "CurrentMacroDropdown" then
         CurrentMacroDecide = DropdownValue
         continue
     end
-    getgenv().Options[DropdownName]:SetValue(DropdownValue)
+    _G.Options[DropdownName]:SetValue(DropdownValue)
 end
 for StageName, StageMacros in pairs(MacroMaps) do
     if StageName == StageNumToName[GameHandler["GameData"]["Stage"]] then
@@ -326,13 +326,13 @@ for StageName, StageMacros in pairs(MacroMaps) do
         CurrentMacroDecide = MacroName
     end
 end
-getgenv().Options["CurrentMacroDropdown"]:SetValue(CurrentMacroDecide)
-for ToggleName, ToggleValue in pairs(getgenv().Octohub.Config.Toggles) do
-    local Toggle = getgenv().Toggles[ToggleName]
+_G.Options["CurrentMacroDropdown"]:SetValue(CurrentMacroDecide)
+for ToggleName, ToggleValue in pairs(_G.Octohub.Config.Toggles) do
+    local Toggle = _G.Toggles[ToggleName]
     if not Toggle then continue end
-    getgenv().Toggles[ToggleName]:SetValue(ToggleValue)
+    _G.Toggles[ToggleName]:SetValue(ToggleValue)
 end
-local webhookUrlVal = getgenv().Octohub.Config.WebhookUrl or ""
+local webhookUrlVal = _G.Octohub.Config.WebhookUrl or ""
 WebhookInput:SetValue(webhookUrlVal)
 
 --// WEBHOOK \\--

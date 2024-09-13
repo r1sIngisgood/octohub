@@ -19,8 +19,8 @@ ScreenGui.Parent = CoreGui;
 local Toggles = {};
 local Options = {};
 
-getgenv().Toggles = Toggles;
-getgenv().Options = Options;
+_G.Toggles = Toggles;
+_G.Options = Options;
 
 local Library = {
     Registry = {};
@@ -3501,5 +3501,5 @@ end;
 Players.PlayerAdded:Connect(OnPlayerChange);
 Players.PlayerRemoving:Connect(OnPlayerChange);
 
-getgenv().Library = Library
+_G.Library = Library
 return Library

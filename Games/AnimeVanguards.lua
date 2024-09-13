@@ -430,12 +430,12 @@ local function PlaceUnit(UnitIDOrName: number|string, Pos: Vector3, Rotation: nu
     if not UnitIDOrName or not Pos then return end
     if not Rotation then Rotation = 90 end
     local UnitName, UnitID
-    if typeof(UnitIDOrName) == "string" then
-        UnitName = UnitIDOrName
-        UnitID = GetUnitIDFromName(UnitName)
-    elseif typeof(UnitIDOrName) == "number" then
+    if typeof(UnitIDOrName) == "number" or string.find(UnitIDOrName, ":Evolved") then
         UnitID = UnitIDOrName
         UnitName = GetUnitNameFromID(UnitID)
+    elseif typeof(UnitIDOrName) == "string" then
+        UnitName = UnitIDOrName
+        UnitID = GetUnitIDFromName(UnitName)
     end
     local Payload = {UnitName, UnitID, Pos, Rotation}
 

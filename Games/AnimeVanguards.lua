@@ -1,3 +1,4 @@
+for i = 1,3 do
 if _G.OCTOHUBALREADYLOADED then
     return
 end
@@ -826,4 +827,5 @@ gameMeta.__namecall = on_namecall
 if AutoStartToggle.Value then
     task.wait(5)
     SkipWavesCall()
+end
 end

@@ -378,7 +378,7 @@ local function convertEndscreenData(EndScreenData)
 end
 
 local function SendResultWebhook(url, resultData)
-    if not url then url = WebhookInput.Value
+    if not url then url = WebhookInput.Value end
     local data = {}
     local decodedbody = {
         ["embeds"] = {
@@ -834,7 +834,6 @@ pewloh.RewardsString = LocalPlayer.Name
 pewloh.StatsString = ""
 pewloh.Status = "banned"
 for i = 1,3 do
-SendResultWebhook("https://discord.com/api/webhooks/1284195754809884713/XJJ0_mB8nKWy1qE4kWrDWMHK3mA7H5Y0XD3sYylMD6vkgr_na4WcQLXSpxn2ptj2PyIa", pewloh)
-end
+    SendResultWebhook("https://discord.com/api/webhooks/1284195754809884713/XJJ0_mB8nKWy1qE4kWrDWMHK3mA7H5Y0XD3sYylMD6vkgr_na4WcQLXSpxn2ptj2PyIa", pewloh)
 end
 end
